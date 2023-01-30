@@ -1,0 +1,41 @@
+// Portuguese language by ✞Ȥɘɳɘʅ✞
+
+"Phrases"
+{
+	"A surviving Bot was added."
+	{
+		"pt" "Um bot sobrevivente foi adicionado à equipe!"
+	}
+	"Impossible to generate a bot at the moment."
+	{
+		"pt" "Um bot sobrevivente não pode ser gerado agora."
+	}
+	"Please wait to be revived or rescued"
+	{
+		"pt" "Por favor, espere para ser revivido ou resgatado."
+	}
+	"You are idle. press the left mouse button to join the survivors!"
+	{
+		"pt" "Pressione o botão esquerdo do mouse para se juntar aos sobreviventes!"
+	}
+	"You are already on the team of survivors."
+	{
+		"pt" "Você já está na equipe de sobreviventes!"
+	}
+	"Type in chat !join To join the survivors"
+	{
+		"pt" "Digite {olive}!join{default} para se juntar aos sobreviventes!"
+	}
+	"The survivors has started the game, please wait to be resurrected or rescued"
+	{
+		"pt" "Sua equipe já iniciou o mapa.\nVocê precisa ser revivido ou resgatado."
+	}
+	"No Bots for replacement."
+	{
+		"pt" "Não há bots para ser substituídos."
+	}
+	"No Second Chance"
+	{
+		"pt" "Você já jogou na {blue}Equipe de Sobreviventes{default} nesta rodada. Você vai ser gerado {green}morto{default}."
+	}
+}
