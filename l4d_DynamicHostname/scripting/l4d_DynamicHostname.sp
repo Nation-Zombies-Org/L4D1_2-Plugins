@@ -4,79 +4,89 @@
 #include <sourcemod>
 #include <sdktools>
 
-#define PLUGIN_VERSION "1.7"
+#define PLUGIN_VERSION "1.9-2023/6/3"
 
 #define		DN_TAG		"[DHostName]"
 #define		SYMBOL_LEFT		'('
 #define		SYMBOL_RIGHT	')'
 
-ConVar g_hHostName, g_hReadyUp;
-char g_sDefaultN[68];
+ConVar g_hHostName, g_hModeName, hostport;
+char g_sModeName[64], sHostport[10];
 
 public Plugin myinfo = 
 {
-	name = "L4D Dynamic中文伺服器名",
+	name = "L4D Dynamic Host Name",
 	author = "Harry Potter",
-	description = "Show what mode is it now on chinese server name with txt file",
+	description = "Server name with txt file (Support any language)",
 	version = PLUGIN_VERSION,
-	url = "myself"
+	url = "https://steamcommunity.com/profiles/76561198026784913/"
 }
 
 public void OnPluginStart()
 {
-	g_hReadyUp = CreateConVar("l4d_current_mode", "", "League notice displayed on server name", FCVAR_SPONLY | FCVAR_NOTIFY);
 	g_hHostName	= FindConVar("hostname");
 
-	g_hHostName.GetString(g_sDefaultN, sizeof(g_sDefaultN));
-	if (strlen(g_sDefaultN))//strlen():回傳字串的長度
-		ChangeServerName();
+	hostport = FindConVar("hostport");
+	g_hModeName = CreateConVar("l4d_current_mode", "", "League notice displayed on server name", FCVAR_SPONLY | FCVAR_NOTIFY);
+
+	GetCvars();
+	hostport.AddChangeHook(ConVarChanged_Cvars);
+	g_hModeName.AddChangeHook(ConVarChanged_Cvars);
+
+	ChangeServerName();
 }
 
-public void OnConfigsExecuted()
-{		
-	if (!strlen(g_sDefaultN)) return;
-	
-	if (g_hReadyUp == INVALID_HANDLE){
-	
-		ChangeServerName();
-		LogMessage("l4d_current_mode no found!");
-	}
-	else {
-	
-		char sReadyUpCfgName[128];
-		GetConVarString(g_hReadyUp, sReadyUpCfgName, 128);
-
-		ChangeServerName(sReadyUpCfgName);
-	}
-	
-}
-
-void ChangeServerName(char[] sReadyUpCfgName = "")
+void ConVarChanged_Cvars(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	char sPath[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, sPath, sizeof(sPath),"configs/hostname/server_hostname.txt");//檔案路徑設定
+	GetCvars();
+
+	ChangeServerName();
+}
+
+void GetCvars()
+{
+	hostport.GetString(sHostport, sizeof(sHostport));
+	g_hModeName.GetString(g_sModeName, sizeof(g_sModeName));
+}
+
+void ChangeServerName()
+{
+	static char sPath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, sPath, sizeof(sPath),"configs/hostname/server_hostname_%s.txt", sHostport);
 	
-	Handle file = OpenFile(sPath, "r");//讀取檔案
-	if(file == INVALID_HANDLE)
+	static char readData[256];
+	File file = OpenFile(sPath, "r");
+	if(file == null)
 	{
-		LogMessage("file configs/hostname/server_hostname.txt doesn't exist!");
-		CloseHandle(file);
-		return;
+		BuildPath(Path_SM, sPath, sizeof(sPath),"configs/hostname/server_hostname.txt", sHostport);
+		file = OpenFile(sPath, "r");
+		if(file == null)
+		{
+			LogError("File configs/hostname/server_hostname.txt doesn't exist!");
+			return;
+		}
+		if(!IsEndOfFile(file)) ReadFileLine(file, readData, sizeof(readData));//讀一行
+		file.Close();
+
+		BuildPath(Path_SM, sPath, sizeof(sPath),"configs/hostname/server_hostname_%s.txt", sHostport);
+		file = OpenFile(sPath, "a");
+		file.WriteString(readData, false);
+		file.Close();
+		
+		file = OpenFile(sPath, "r");
 	}
-	
-	char readData[256];
+
 	if(!IsEndOfFile(file) && ReadFileLine(file, readData, sizeof(readData)))//讀一行
 	{
-		char sNewName[128];
-		if(strlen(sReadyUpCfgName) == 0)
-			Format(sNewName, sizeof(sNewName), "%s", readData);
+		static char sNewName[128];
+		if(strlen(g_sModeName) == 0)
+			FormatEx(sNewName, sizeof(sNewName), "%s", readData);
 		else
-			Format(sNewName, sizeof(sNewName), "%s%c%s%c", readData, SYMBOL_LEFT, sReadyUpCfgName, SYMBOL_RIGHT);
+			FormatEx(sNewName, sizeof(sNewName), "%s%c%s%c", readData, SYMBOL_LEFT, g_sModeName, SYMBOL_RIGHT);
 		
-		SetConVarString(g_hHostName,sNewName);
+		g_hHostName.SetString(sNewName);
 		LogMessage("%s New server name \"%s\"", DN_TAG, sNewName);
-		
-		Format(g_sDefaultN,sizeof(g_sDefaultN),"%s",sNewName);
 	}
-	CloseHandle(file);
+
+	file.Close();
 }

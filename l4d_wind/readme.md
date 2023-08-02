@@ -9,17 +9,17 @@ Create a survivor bot in game + Teleport player
 	<br/>![l4d_wind_2](image/l4d_wind_2.jpg)
 
 * Apply to | 適用於
-```
-L4D1
-L4D2
-```
+	```
+	L4D1
+	L4D2
+	```
 
 * Translation Support | 支援翻譯
-```
-English
-繁體中文
-简体中文
-```
+	```
+	English
+	繁體中文
+	简体中文
+	```
 
 * <details><summary>Changelog | 版本日誌</summary>
 
@@ -31,37 +31,37 @@ English
 	None
 
 * Similar Plugin | 相似插件
-	1. [l4d_telpeort_call](https://github.com/fbef0102/Game-Private_Plugin/tree/main/Plugin_插件/Survivor_人類/l4d_telpeort_call): Teleport Call Menu
+	1. [l4d_teleport_call](https://github.com/fbef0102/Game-Private_Plugin/tree/main/Plugin_插件/Survivor_人類/l4d_teleport_call): Teleport Call Menu
 		> 呼叫傳送功能菜單，能傳送玩家到起點、終點、救援區域
 
 * <details><summary>ConVar | 指令</summary>
 
 	* cfg/sourcemod/l4d_wind.cfg
-	```php
-	// If 1, Adm can use command to add a survivor bot
-	l4d_wind_add_bot_enable "1"
+		```php
+		// If 1, Adm can use command to add a survivor bot
+		l4d_wind_add_bot_enable "1"
 
-	// Add 'Teleport player' item in admin menu under 'Player commands' category? (0 - No, 1 - Yes)
-	l4d_wind_teleport_adminmenu "1"
+		// Add 'Teleport player' item in admin menu under 'Player commands' category? (0 - No, 1 - Yes)
+		l4d_wind_teleport_adminmenu "1"
 
-	// If 1, Adm can teleport special infected
-	l4d_wind_teleport_infected_enable "1"
-	```
+		// If 1, Adm can teleport special infected
+		l4d_wind_teleport_infected_enable "1"
+		```
 </details>
 
 * <details><summary>Command | 命令</summary>
 
 	* **Add a survivor bot (Adm required: ADMFLAG_BAN)**
-	```php
-	sm_addbot
-	sm_createbot
-	```
+		```php
+		sm_addbot
+		sm_createbot
+		```
 
 	* **Open 'Teleport player' menu (Adm required: ADMFLAG_BAN)**
-	```php
-	sm_teleport
-	sm_tp
-	```
+		```php
+		sm_teleport
+		sm_tp
+		```
 </details>
 
 - - - -

@@ -2,7 +2,7 @@
 Let admins spawn any kind of objects and saved to cfg
 
 * Work | 作品展示
-    * [Unlimited Map C8 by Harry](https://www.youtube.com/watch?v=UTUjd6hlpt0)
+    * [Unlimited Map C8 by Harry](https://youtu.be/I_-QSn8F8Cs)
     * [L4D2-Unlimited-Map](https://github.com/fbef0102/L4D2-Unlimited-Map)
 
 * Image | 圖示
@@ -26,19 +26,26 @@ Let admins spawn any kind of objects and saved to cfg
 	<br/>![l4d2_spawn_props_9](image/l4d2_spawn_props_9.jpg)
 
 * Apply to | 適用於
-```
-L4D1
-L4D2
-```
+	```
+	L4D1
+	L4D2
+	```
 
 * Translation Support | 支援翻譯
-```
-English
-繁體中文
-简体中文
-```
+	```
+	English
+	繁體中文
+	简体中文
+	```
 
 * <details><summary>Changelog | 版本日誌</summary>
+
+	* v4.0 (2023-2-21)
+		* Support stripper cvar to save map.cfg
+			```c
+			"stripper_cfg_path" = "addons/stripper"
+			 - Stripper Config Path
+			```
 
 	* v3.9 (2023-1-5)
         * Fixed Item Position Menu Error.
@@ -67,9 +74,30 @@ English
 	* **Create Object**
         1. Admin types !admin in chat->Spawn Objects->Spawn Objects->Select the spawn method
         2. Physics（affected by gravity），Non-solid（you can go through it），Solid（won't be affected by gravity），Items&Weapons（Guns, Melees, Supplies, Throwables, etc.）
+			* Not all objects can be Physics
+			* Not all objects can be Non-solid
+			* Not all objects can be Solid (Go ask Valve)
 
 	* **Save Object**
         1. Admin types !admin in chat->Spawn Objects->Save Objects->Save Stripper File
+		2. All Spawned objects will be saved into addons\stripper\maps\xxxxx.cfg
+			* xxxx is map name
+		3. Restart Map
+
+	* **Delete Object**
+        1. Modify file: addons\stripper\maps\xxxxx.cfg
+			* xxxx is map name
+		2. Find the object you want to delete by classname, origin, angles
+		3. Delete code {}，for example:
+			```php
+			{
+				"solid" "6"
+				"origin" "2408 -140 0"
+				"angles" "0 93 0"
+				"model"	 "models/props/cs_militia/boxes_frontroom.mdl"
+				"classname"	"prop_dynamic"
+			}
+			```
 
 * Why I can't read object spawn menu?
 	* The data/l4d2_spawn_props_models.txt is Chinese language
@@ -185,14 +213,39 @@ English
 創造屬於自己風格的地圖，製作迷宮與障礙物
 
 * 必看
-	* 必須[安裝Stripper:Source](https://github.com/fbef0102/Game-Private_Plugin/tree/main/Tutorial_%E6%95%99%E5%AD%B8%E5%8D%80/Chinese_%E7%B9%81%E9%AB%94%E4%B8%AD%E6%96%87/Server/%E5%AE%89%E8%A3%9D%E5%85%B6%E4%BB%96%E6%AA%94%E6%A1%88%E6%95%99%E5%AD%B8#%E5%AE%89%E8%A3%9Dstripper)才能更改地圖
+	* 必須[安裝Stripper:Source](https://github.com/fbef0102/Game-Private_Plugin/tree/main/Tutorial_%E6%95%99%E5%AD%B8%E5%8D%80/Chinese_%E7%B9%81%E9%AB%94%E4%B8%AD%E6%96%87/Server/%E5%AE%89%E8%A3%9D%E5%85%B6%E4%BB%96%E6%AA%94%E6%A1%88%E6%95%99%E5%AD%B8#%E5%AE%89%E8%A3%9Dstripper)才能改變地圖樣貌
 
 * 如何創造物件?
     1. 管理員輸入!admin->生成物件->生成物件->選擇其中一項
     2. 動態（會受重力影響），穿透（擺好看），固態（不受重力影響），物品（槍械、近戰、醫療物品、投擲物品、彈藥堆、雷射裝置）
+		* 非所有模型都能變成動態
+		* 非所有模型都能變成穿透
+		* 非所有模型都能變成固態 (去問Valve，認真你就輸了)
 
 * 如何儲存物件?
     1. 管理員輸入!admin->生成物件->儲存物件
+	2. 生成的物件會儲存於addons\stripper\maps\xxxxx.cfg
+		* xxxx是地圖名
+	3. 重啟地圖
+
+* 如何刪除已經儲存的物件?
+	1. 編輯檔案 addons\stripper\maps\xxxxx.cfg
+		* xxxx是地圖名
+	2. 透過 ```"model" "origin" "angles"```關鍵字查找你要刪除的物件
+		* origin: 位置
+		* angles: 角度
+		* model: 模組
+	3. 刪除整段上下{}，譬如
+		```php
+		{
+			"solid" "6"
+			"origin" "2408 -140 0"
+			"angles" "0 93 0"
+			"model"	 "models/props/cs_militia/boxes_frontroom.mdl"
+			"classname"	"prop_dynamic"
+		}
+		```
+
 
 * 如何增加更多模組?
 	* 編輯檔案 data/l4d2_spawn_props_models.txt

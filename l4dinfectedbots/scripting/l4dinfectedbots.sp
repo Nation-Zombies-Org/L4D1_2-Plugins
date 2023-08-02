@@ -1,6 +1,6 @@
 /********************************************************************************************
 * Plugin	: L4D/L4D2 InfectedBots (Versus Coop/Coop Versus)
-* Version	: 2.7.8 (2009-2022)
+* Version	: 2.8.3  (2009-2023)
 * Game		: Left 4 Dead 1 & 2
 * Author	: djromero (SkyDavid, David) and MI 5 and Harry Potter
 * Website	: https://forums.alliedmods.net/showpost.php?p=2699220&postcount=1371
@@ -8,6 +8,24 @@
 * Purpose	: This plugin spawns infected bots in L4D1/2, and gives greater control of the infected bots in L4D1/L4D2.
 * WARNING	: Please use sourcemod's latest 1.10 branch snapshot.
 * REQUIRE	: left4dhooks  (https://forums.alliedmods.net/showthread.php?p=2684862)
+* Version 2.8.3 (2023-7-5)
+*	   - Override L4D2 Vscripts to control infected limit.
+
+* Version 2.8.2 (2023-5-27)
+*	   - Add a convar, including dead survivors or not
+*	   - Add a convar, disable infected bots spawning or not in versus/scavenge mode
+*
+* Version 2.8.1 (2023-5-22)
+*	   - Use function L4D_HasPlayerControlledZombies() from left4dhooks to detect if player can join infected in current mode.
+*
+* Version 2.8.0 (2023-5-5)
+*	   - Add Special Infected Weight
+*	   - Add and modify convars about Special Infected Weight
+*
+* Version 2.7.9 (2023-4-13)
+*	   - Fixed Not Working in Survival Mode
+*	   - Fixed cvar "l4d_infectedbots_adjust_spawn_times" calculation mistake
+*
 * Version 2.7.8
 *	   - Fixed abnormal Tank Bug. Player gets a special infected with tank skin and abilitiesm, but can not attack or throw rock. This bug only happenes in l4d1.
 *	   - Fixed Music Bugs when switching to infected team in coop/realism/survival.
@@ -701,7 +719,7 @@
 #include <multicolors>
 #undef REQUIRE_PLUGIN
 #include <left4dhooks>
-#define PLUGIN_VERSION "2.7.8"
+#define PLUGIN_VERSION "2.8.3"
 #define DEBUG 0
 
 #define TEAM_SPECTATOR		1
@@ -714,6 +732,15 @@
 #define ZOMBIECLASS_SPITTER	4
 #define ZOMBIECLASS_JOCKEY	5
 #define ZOMBIECLASS_CHARGER	6
+
+#define NUM_TYPES_INFECTED_MAX 7 // for spawning
+int SI_SMOKER = 0;
+int SI_BOOMER = 1;
+int SI_HUNTER = 2;
+int SI_SPITTER = 3;
+int SI_JOCKEY = 4;
+int SI_CHARGER = 5;
+int SI_TANK = 6;
 
 #define MAXENTITIES 2048
 #define SUICIDE_TIME 10
@@ -731,6 +758,8 @@
 // l4d1/2 value
 static char sSpawnCommand[32];
 static int ZOMBIECLASS_TANK;
+int NUM_INFECTED;
+
 
 // Variables
 int InfectedRealCount; // Holds the amount of real alive infected players
@@ -739,12 +768,9 @@ int InfectedBotCount; // Holds the amount of infected bots in any gamemode
 int InfectedBotQueue; // Holds the amount of bots that are going to spawn (including human infected player in coop/realism/survival)
 int g_iCurrentMode = 0; // Holds the g_iCurrentMode, 1 for coop and realism, 2 for versus, teamversus, scavenge and teamscavenge, 3 for survival
 int TanksPlaying; // Holds the amount of tanks on the playing field
-int g_iBoomerLimit; // Sets the Boomer Limit, related to the boomer limit cvar
-int g_iSmokerLimit; // Sets the Smoker Limit, related to the smoker limit cvar
-int g_iHunterLimit; // Sets the Hunter Limit, related to the hunter limit cvar
-int g_iSpitterLimit; // Sets the Spitter Limit, related to the Spitter limit cvar
-int g_iJockeyLimit; // Sets the Jockey Limit, related to the Jockey limit cvar
-int g_iChargerLimit; // Sets the Charger Limit, related to the Charger limit cvar
+int g_iSpawnWeights[NUM_TYPES_INFECTED_MAX];
+int g_iSpawnLimits[NUM_TYPES_INFECTED_MAX];
+int g_iSpawnCounts[NUM_TYPES_INFECTED_MAX];
 int g_iMaxPlayerZombies; // Holds the amount of the maximum amount of special zombies on the field
 int MaxPlayerTank; // Used for setting an additional slot for each tank that spawns
 int g_iCoordinationBotReady; // Used to determine how many bots are ready, used only for the coordination feature
@@ -754,12 +780,6 @@ int iPlayersInSurvivorTeam;
 bool b_HasRoundStarted; // Used to state if the round started or not
 bool g_bHasRoundEnded; // States if the round has ended or not
 bool g_bLeftSaveRoom; // States if the survivors have left the safe room
-bool canSpawnBoomer; // States if we can spawn a boomer (releated to spawn restrictions)
-bool canSpawnSmoker; // States if we can spawn a smoker (releated to spawn restrictions)
-bool canSpawnHunter; // States if we can spawn a hunter (releated to spawn restrictions)
-bool canSpawnSpitter; // States if we can spawn a spitter (releated to spawn restrictions)
-bool canSpawnJockey; // States if we can spawn a jockey (releated to spawn restrictions)
-bool canSpawnCharger; // States if we can spawn a charger (releated to spawn restrictions)
 bool g_bFinaleStarted; // States whether the finale has started or not
 bool TankReplacing; // Used only in coop, prevents the Sound hook event from triggering over and over again
 bool PlayerLifeState[MAXPLAYERS+1]; // States whether that player has the lifestate changed from switching the gamemode
@@ -770,16 +790,13 @@ bool PlayerHasEnteredStart[MAXPLAYERS+1];
 bool bDisableSurvivorModelGlow;
 bool g_bSurvivalStart;
 bool g_bIsCoordination;
-bool g_bInfectedSpawnSameFrame;
+bool g_bInfectedSpawnSameFrame, g_bScaleWeights, g_bIncludingDeadPlayers, g_bDisableInfectedBot;
 
 // ConVar
 ConVar g_hCvarAllow, g_hCvarMPGameMode, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog;
-ConVar h_BoomerLimit; // Related to the Boomer limit cvar
-ConVar h_SmokerLimit; // Related to the Smoker limit cvar
-ConVar h_HunterLimit; // Related to the Hunter limit cvar
-ConVar h_SpitterLimit; // Related to the Spitter limit cvar
-ConVar h_JockeyLimit; // Related to the Jockey limit cvar
-ConVar h_ChargerLimit; // Related to the Charger limit cvar
+ConVar g_hSpawnWeights[NUM_TYPES_INFECTED_MAX];
+ConVar g_hSpawnLimits[NUM_TYPES_INFECTED_MAX];
+ConVar g_hScaleWeights;
 ConVar h_MaxPlayerZombies; // Related to the max specials cvar
 ConVar h_PlayerAddZombiesScale;
 ConVar h_PlayerAddZombies;
@@ -821,10 +838,10 @@ ConVar h_CommonLimitAdjust, h_CommonLimit, h_PlayerAddCommonLimitScale, h_Player
 ConVar h_CoopInfectedPlayerFlashLight;
 ConVar h_StatusAnnouncementEnable;
 ConVar h_CoopInfectedPlayerGhostState;
-ConVar h_InfectedSpawnSameFrame;
-ConVar h_WhereToSpawnInfected;
+ConVar h_InfectedSpawnSameFrame, h_WhereToSpawnInfected, h_IncludingDeadPlayers, h_DisableInfectedBot;
+
 ConVar sb_all_bot_game, allow_all_bot_survivor_team, sb_all_bot_team, vs_max_team_switches, versus_tank_bonus_health, z_max_player_zombies,
-	director_no_specials;
+	director_no_specials, director_allow_infected_bots;
 int vs_max_team_switches_default;
 bool sb_all_bot_game_default, allow_all_bot_survivor_team_default, sb_all_bot_team_default, director_no_specials_bool;
 bool g_bFirstRecord;
@@ -876,7 +893,7 @@ bool g_bCvarAllow, g_bMapStarted, g_bSafeSpawn, g_bTankHealthAdjust, g_bVersusCo
 	g_bTankSpawnFinal;
 int g_iZSDisableGamemode, g_iTankHealth, g_iInfectedSpawnTimeMax, g_iInfectedSpawnTimeMin, g_iHumanCoopLimit,
 	g_iReducedSpawnTimesOnPlayer, g_iWitchPeriodMax, g_iWitchPeriodMin, g_iSpawnTankProbability, g_iCommonLimit,
-	g_iTankLimit, g_iWhereToSpawnInfected;
+	g_iTankLimit, g_iWitchLimit, g_iWhereToSpawnInfected, g_iCvar_z_common_limit;
 int g_iPlayerSpawn, g_bSpawnWitchBride;
 float g_fIdletime_b4slay, g_fInitialSpawn, g_fWitchKillTime;
 int g_iModelIndex[MAXPLAYERS+1];			// Player Model entity reference
@@ -894,9 +911,9 @@ int lastHumanTankId;
 
 public Plugin myinfo =
 {
-	name = "[L4D/L4D2] Infected Bots (Coop/Versus/Realism/Scavenge/Survival)",
+	name = "[L4D/L4D2] Infected Bots (Coop/Versus/Realism/Scavenge/Survival/Mutation)",
 	author = "djromero (SkyDavid), MI 5, Harry Potter",
-	description = "Spawns infected bots in versus, allows playable special infected in coop/survival, and changable z_max_player_zombies limit",
+	description = "Spawns multi infected bots in versus + allows playable special infected in coop/survival + unlock infected limitt",
 	version = PLUGIN_VERSION,
 	url = "https://forums.alliedmods.net/showpost.php?p=2699220&postcount=1371"
 }
@@ -910,12 +927,14 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 		ZOMBIECLASS_TANK = 5;
 		sSpawnCommand = "z_spawn";
 		g_bL4D2Version = false;
+		NUM_INFECTED = 3;
 	}
 	else if( test == Engine_Left4Dead2 )
 	{
 		ZOMBIECLASS_TANK = 8;
 		sSpawnCommand = "z_spawn_old";
 		g_bL4D2Version = true;
+		NUM_INFECTED = 6;
 	}
 	else
 	{
@@ -933,8 +952,8 @@ public void OnPluginStart()
 	GetGameData();
 
 	// Add a sourcemod command so players can easily join infected in coop/realism/survival
-	RegConsoleCmd("sm_ji", JoinInfected);
-	RegConsoleCmd("sm_js", JoinSurvivors);
+	RegConsoleCmd("sm_ji", JoinInfected, "(Coop/Realism/Survival only) Join Infected");
+	RegConsoleCmd("sm_js", JoinSurvivors, "(Coop/Realism/Survival only) Join Survivors");
 	RegConsoleCmd("sm_zs", ForceInfectedSuicide,"suicide myself (if infected get stuck or somthing)");
 	RegAdminCmd("sm_zlimit", Console_ZLimit, ADMFLAG_SLAY,"control max special zombies limit");
 	RegAdminCmd("sm_timer", Console_Timer, ADMFLAG_SLAY,"control special zombies spawn timer");
@@ -945,76 +964,91 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_checkqueue", CheckQueue);
 
 	// Hook "say" so clients can toggle HUD on/off for themselves
-	RegConsoleCmd("sm_infhud", Command_Say);
+	RegConsoleCmd("sm_infhud", Command_Say, "(Infected only) Toggle HUD on/off for themselves");
 
 	// We register the version cvar
 	CreateConVar("l4d_infectedbots_version", PLUGIN_VERSION, "Version of L4D Infected Bots", FCVAR_NOTIFY|FCVAR_DONTRECORD);
 
 	// console variables
-	g_hCvarAllow =		CreateConVar(	"l4d_infectedbots_allow",			"1",			"0=Plugin off, 1=Plugin on.", FCVAR_NOTIFY );
-	g_hCvarModes =		CreateConVar(	"l4d_infectedbots_modes",			"",				"Turn on the plugin in these game modes, separate by commas (no spaces). (Empty = all).", FCVAR_NOTIFY );
-	g_hCvarModesOff =	CreateConVar(	"l4d_infectedbots_modes_off",		"",				"Turn off the plugin in these game modes, separate by commas (no spaces). (Empty = none).", FCVAR_NOTIFY );
-	g_hCvarModesTog =	CreateConVar(	"l4d_infectedbots_modes_tog",		"0",			"Turn on the plugin in these game modes. 0=All, 1=Coop/Realism, 2=Survival, 4=Versus, 8=Scavenge. Add numbers together.", FCVAR_NOTIFY );
-	h_BoomerLimit = CreateConVar("l4d_infectedbots_boomer_limit", "2", "Sets the limit for boomers spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
-	h_SmokerLimit = CreateConVar("l4d_infectedbots_smoker_limit", "2", "Sets the limit for smokers spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
-	h_HunterLimit = CreateConVar("l4d_infectedbots_hunter_limit", "2", "Sets the limit for hunters spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
-	h_WitchLimit = CreateConVar("l4d_infectedbots_witch_max_limit", "6", "Sets the limit for witches spawned by the plugin (does not affect director witches)", FCVAR_NOTIFY, true, 0.0);
+	g_hCvarAllow =						CreateConVar("l4d_infectedbots_allow",									"1",		"0=Plugin off, 1=Plugin on.", FCVAR_NOTIFY );
+	g_hCvarModes =						CreateConVar("l4d_infectedbots_modes",									"",			"Turn on the plugin in these game modes, separate by commas (no spaces). (Empty = all).", FCVAR_NOTIFY );
+	g_hCvarModesOff =					CreateConVar("l4d_infectedbots_modes_off",								"",			"Turn off the plugin in these game modes, separate by commas (no spaces). (Empty = none).", FCVAR_NOTIFY );
+	g_hCvarModesTog =					CreateConVar("l4d_infectedbots_modes_tog",								"0",		"Turn on the plugin in these game modes. 0=All, 1=Coop/Realism, 2=Survival, 4=Versus, 8=Scavenge. Add numbers together.", FCVAR_NOTIFY );
+	
+	g_hSpawnLimits[SI_BOOMER] = 		CreateConVar("l4d_infectedbots_boomer_limit", 							"2", 		"Sets the limit for boomers spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
+	g_hSpawnLimits[SI_SMOKER] = 		CreateConVar("l4d_infectedbots_smoker_limit", 							"2", 		"Sets the limit for smokers spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
+	g_hSpawnLimits[SI_HUNTER] = 		CreateConVar("l4d_infectedbots_hunter_limit", 							"2", 		"Sets the limit for hunters spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
 	if (g_bL4D2Version)
 	{
-		h_SpitterLimit = CreateConVar("l4d_infectedbots_spitter_limit", "2", "Sets the limit for spitters spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
-		h_JockeyLimit = CreateConVar("l4d_infectedbots_jockey_limit", "2", "Sets the limit for jockeys spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
-		h_ChargerLimit = CreateConVar("l4d_infectedbots_charger_limit", "2", "Sets the limit for chargers spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
+		g_hSpawnLimits[SI_SPITTER] = 	CreateConVar("l4d_infectedbots_spitter_limit", 							"2", 		"Sets the limit for spitters spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
+		g_hSpawnLimits[SI_JOCKEY] =  	CreateConVar("l4d_infectedbots_jockey_limit", 							"2", 		"Sets the limit for jockeys spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
+		g_hSpawnLimits[SI_CHARGER] = 	CreateConVar("l4d_infectedbots_charger_limit", 							"2", 		"Sets the limit for chargers spawned by the plugin", FCVAR_NOTIFY, true, 0.0);
 	}
-	h_TankLimit = CreateConVar("l4d_infectedbots_tank_limit", "1", "Sets the limit for tanks spawned by the plugin (does not affect director tanks)", FCVAR_NOTIFY, true, 0.0);
-	h_PlayerAddTankLimitScale = CreateConVar("l4d_infectedbots_add_tanklimit_scale", "3", "If server has more than 4+ alive players, how many tanks on the field = 'tank_limit' + [(alive players - 4) ÷ 'add_tanklimit_scale' × 'add_tanklimit'].", FCVAR_NOTIFY, true, 1.0);
-	h_PlayerAddTankLimit = CreateConVar("l4d_infectedbots_add_tanklimit", "1", "If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_tank_limit' each 'l4d_infectedbots_add_tanklimit_scale' players joins", FCVAR_NOTIFY, true, 0.0);
-	h_TankSpawnFinal = CreateConVar("l4d_infectedbots_tank_spawn_final", "1", "If 1, still spawn tank in final stage rescue (does not affect director tanks)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hSpawnWeights[SI_BOOMER] = 		CreateConVar("l4d_infectedbots_boomer_weight", 							"100", 		"The weight for a boomer spawning [0-100]", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_hSpawnWeights[SI_SMOKER] = 		CreateConVar("l4d_infectedbots_smoker_weight", 							"100", 		"The weight for a smoker spawning [0-100]", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_hSpawnWeights[SI_HUNTER] = 		CreateConVar("l4d_infectedbots_hunter_weight", 							"100", 		"The weight for a hunter spawning [0-100]", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	if (g_bL4D2Version)
+	{
+		g_hSpawnWeights[SI_CHARGER] = 	CreateConVar("l4d_infectedbots_charger_weight", 						"100", 		"The weight for a charger spawning [0-100]", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+		g_hSpawnWeights[SI_JOCKEY] = 	CreateConVar("l4d_infectedbots_jockey_weight", 							"100", 		"The weight for a jockey spawning [0-100]", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+		g_hSpawnWeights[SI_SPITTER] = 	CreateConVar("l4d_infectedbots_spitter_weight", 						"100", 		"The weight for a spitter spawning [0-100]", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	}
+	g_hScaleWeights = 					CreateConVar("l4d_infectedbots_scale_weights", 							"0", 		"If 1, Scale spawn weights with the limits of corresponding SI", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	
+	h_WitchLimit = 						CreateConVar("l4d_infectedbots_witch_max_limit", 						"6", 		"Sets the limit for witches spawned by the plugin (does not affect director witches)", FCVAR_NOTIFY, true, 0.0);
+	
+	h_TankLimit = 						CreateConVar("l4d_infectedbots_tank_limit", 							"1", 		"Sets the limit for tanks spawned by the plugin (does not affect director tanks)", FCVAR_NOTIFY, true, 0.0);
+	h_PlayerAddTankLimitScale = 		CreateConVar("l4d_infectedbots_add_tanklimit_scale",					"3", 		"If server has more than 4+ alive players, how many tanks on the field = 'tank_limit' + [(alive players - 4) ÷ 'add_tanklimit_scale' × 'add_tanklimit'].", FCVAR_NOTIFY, true, 1.0);
+	h_PlayerAddTankLimit = 				CreateConVar("l4d_infectedbots_add_tanklimit", 							"1", 		"If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_tank_limit' each 'l4d_infectedbots_add_tanklimit_scale' players joins", FCVAR_NOTIFY, true, 0.0);
+	h_TankSpawnFinal = 					CreateConVar("l4d_infectedbots_tank_spawn_final", 						"1", 		"If 1, still spawn tank in final stage rescue (does not affect director tanks)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
-	h_MaxPlayerZombies = CreateConVar("l4d_infectedbots_max_specials", "2", "Defines how many special infected can be on the map on all gamemodes(does not count witch on all gamemodes, count tank in all gamemode)", FCVAR_NOTIFY, true, 0.0);
-	h_PlayerAddZombiesScale = CreateConVar("l4d_infectedbots_add_specials_scale", "2", "If server has more than 4+ alive players, how many special infected = 'max_specials' + [(alive players - 4) ÷ 'add_specials_scale' × 'add_specials'].", FCVAR_NOTIFY, true, 1.0);
-	h_PlayerAddZombies = CreateConVar("l4d_infectedbots_add_specials", "2", "If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_max_specials' each 'l4d_infectedbots_add_specials_scale' players joins", FCVAR_NOTIFY, true, 0.0);
+	h_MaxPlayerZombies = 				CreateConVar("l4d_infectedbots_max_specials", 							"2", 		"Defines how many special infected can be on the map on all gamemodes(does not count witch on all gamemodes, count tank in all gamemode)", FCVAR_NOTIFY, true, 0.0);
+	h_PlayerAddZombiesScale = 			CreateConVar("l4d_infectedbots_add_specials_scale", 					"2", 		"If server has more than 4+ alive players, how many special infected = 'max_specials' + [(alive players - 4) ÷ 'add_specials_scale' × 'add_specials'].", FCVAR_NOTIFY, true, 1.0);
+	h_PlayerAddZombies = 				CreateConVar("l4d_infectedbots_add_specials", 							"2", 		"If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_max_specials' each 'l4d_infectedbots_add_specials_scale' players joins", FCVAR_NOTIFY, true, 0.0);
 
-	h_TankHealthAdjust = CreateConVar("l4d_infectedbots_adjust_tankhealth_enable", "1", "If 1, adjust and overrides tank health by this plugin.", FCVAR_NOTIFY, true, 0.0,true, 1.0);
-	h_TankHealth = CreateConVar("l4d_infectedbots_default_tankhealth", "4000", "Sets Default Health for Tank, Tank hp is affected by gamemode and difficulty (Example, Set Tank health 4000hp, but in Easy: 3000, Normal: 4000, Versus: 6000, Advanced/Expert: 8000)", FCVAR_NOTIFY, true, 1.0);
-	h_PlayerAddTankHealthScale = CreateConVar("l4d_infectedbots_add_tankhealth_scale", "1", "If server has more than 4+ alive players, how many Tank Health = 'default_tankhealth' + [(alive players - 4) ÷ 'add_tankhealth_scale' × 'add_tankhealth'].", FCVAR_NOTIFY, true, 1.0);
-	h_PlayerAddTankHealth = CreateConVar("l4d_infectedbots_add_tankhealth", "500", "If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_default_tankhealth' each 'l4d_infectedbots_add_tankhealth_scale' players joins", FCVAR_NOTIFY, true, 0.0);
-	h_InfectedSpawnTimeMax = CreateConVar("l4d_infectedbots_spawn_time_max", "60", "Sets the max spawn time for special infected spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
-	h_InfectedSpawnTimeMin = CreateConVar("l4d_infectedbots_spawn_time_min", "40", "Sets the minimum spawn time for special infected spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
-	h_CoopPlayableTank = CreateConVar("l4d_infectedbots_coop_versus_tank_playable", "0", "If 1, tank will always be controlled by human player in coop/survival/realism.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_JoinableTeams = CreateConVar("l4d_infectedbots_coop_versus", "1", "If 1, players can join the infected team in coop/survival/realism (!ji in chat to join infected, !js to join survivors)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_TankHealthAdjust = 				CreateConVar("l4d_infectedbots_adjust_tankhealth_enable", 				"1", 		"If 1, adjust and overrides tank health by this plugin.", FCVAR_NOTIFY, true, 0.0,true, 1.0);
+	h_TankHealth = 						CreateConVar("l4d_infectedbots_default_tankhealth", 					"4000", 	"Sets Default Health for Tank, Tank hp is affected by gamemode and difficulty (Example, Set Tank health 4000hp, but in Easy: 3000, Normal: 4000, Versus: 6000, Advanced/Expert: 8000)", FCVAR_NOTIFY, true, 1.0);
+	h_PlayerAddTankHealthScale = 		CreateConVar("l4d_infectedbots_add_tankhealth_scale", 					"1", 		"If server has more than 4+ alive players, how many Tank Health = 'default_tankhealth' + [(alive players - 4) ÷ 'add_tankhealth_scale' × 'add_tankhealth'].", FCVAR_NOTIFY, true, 1.0);
+	h_PlayerAddTankHealth = 			CreateConVar("l4d_infectedbots_add_tankhealth", 						"500", 		"If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_default_tankhealth' each 'l4d_infectedbots_add_tankhealth_scale' players joins", FCVAR_NOTIFY, true, 0.0);
+	h_InfectedSpawnTimeMax = 			CreateConVar("l4d_infectedbots_spawn_time_max", 						"60", 		"Sets the max spawn time for special infected spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
+	h_InfectedSpawnTimeMin = 			CreateConVar("l4d_infectedbots_spawn_time_min", 						"40", 		"Sets the minimum spawn time for special infected spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
+	h_CoopPlayableTank = 				CreateConVar("l4d_infectedbots_coop_versus_tank_playable", 				"0", 		"If 1, tank will always be controlled by human player in coop/survival/realism.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_JoinableTeams = 					CreateConVar("l4d_infectedbots_coop_versus", 							"1", 		"If 1, players can join the infected team in coop/survival/realism (!ji in chat to join infected, !js to join survivors)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	if (!g_bL4D2Version)
 	{
-		h_StatsBoard = CreateConVar("l4d_infectedbots_stats_board", "0", "If 1, the stats board will show up after an infected player dies (L4D1 ONLY)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+		h_StatsBoard = 					CreateConVar("l4d_infectedbots_stats_board", 							"0", 		"If 1, the stats board will show up after an infected player dies (L4D1 ONLY)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	}
-	h_JoinableTeamsAnnounce = CreateConVar("l4d_infectedbots_coop_versus_announce", "1", "If 1, clients will be announced to on how to join the infected team", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_Coordination = CreateConVar("l4d_infectedbots_coordination", "0", "If 1, bots will only spawn when all other bot spawn timers are at zero.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_InfHUD = CreateConVar("l4d_infectedbots_infhud_enable", "1", "Toggle whether Infected HUD is active or not.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_Announce = CreateConVar("l4d_infectedbots_infhud_announce", "1", "Toggle whether Infected HUD announces itself to clients.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_Idletime_b4slay = CreateConVar("l4d_infectedbots_lifespan", "30", "Amount of seconds before a special infected bot is kicked", FCVAR_NOTIFY, true, 1.0);
-	h_InitialSpawn = CreateConVar("l4d_infectedbots_initial_spawn_timer", "10", "The spawn timer in seconds used when infected bots are spawned for the first time in a map", FCVAR_NOTIFY, true, 0.0);
-	h_HumanCoopLimit = CreateConVar("l4d_infectedbots_coop_versus_human_limit", "2", "Sets the limit for the amount of humans that can join the infected team in coop/survival/realism.", FCVAR_NOTIFY, true, 0.0);
-	h_JoinInfectedAccess = CreateConVar("l4d_infectedbots_coop_versus_join_access", "z", " Players with these flags have access to join infected team in coop/survival/realism. (Empty = Everyone, -1: Nobody)", FCVAR_NOTIFY);
-	h_DisableSpawnsTank = CreateConVar("l4d_infectedbots_spawns_disabled_tank", "0", "If 1, Plugin will disable spawning infected bot when a tank is on the field.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_VersusCoop = CreateConVar("l4d_infectedbots_versus_coop", "0", "If 1, The plugin will force all players to the infected side against the survivor AI for every round and map in versus/scavenge", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_AdjustSpawnTimes = CreateConVar("l4d_infectedbots_adjust_spawn_times", "1", "If 1, The plugin will adjust spawn timers depending on the gamemode", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_ReducedSpawnTimesOnPlayer = CreateConVar("l4d_infectedbots_adjust_reduced_spawn_times_on_player", "1", "Reduce certain value to maximum spawn timer based per alive player", FCVAR_NOTIFY, true, 0.0);
-	h_SafeSpawn = CreateConVar("l4d_infectedbots_safe_spawn", "0", "If 1, spawn special infected before survivors leave starting safe room area.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_SpawnDistanceMin = CreateConVar("l4d_infectedbots_spawn_range_min", "350", "The minimum of spawn range for infected. (default: 550, coop/realism only)\nThis cvar will also affect common zombie spawn range and ghost infected player spawn range", FCVAR_NOTIFY, true, 0.0, true, 550.0);
-	h_WitchPeriodMax = CreateConVar("l4d_infectedbots_witch_spawn_time_max", "120.0", "Sets the max spawn time for witch spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
-	h_WitchPeriodMin = CreateConVar("l4d_infectedbots_witch_spawn_time_min", "90.0", "Sets the mix spawn time for witch spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
-	h_WitchSpawnFinal = CreateConVar("l4d_infectedbots_witch_spawn_final", "0", "If 1, still spawn witch in final stage rescue", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_WitchKillTime = CreateConVar("l4d_infectedbots_witch_lifespan", "200", "Amount of seconds before a witch is kicked. (only remove witches spawned by this plugin)", FCVAR_NOTIFY, true, 1.0);
-	h_SpawnTankProbability = CreateConVar("l4d_infectedbots_tank_spawn_probability", "5", "When each time spawn S.I., how much percent of chance to spawn tank", FCVAR_NOTIFY, true, 0.0, true, 100.0);
-	h_ZSDisableGamemode = CreateConVar("l4d_infectedbots_sm_zs_disable_gamemode", "6", "Disable sm_zs in these gamemode (0: None, 1: coop/realism, 2: versus/scavenge, 4: survival, add numbers together)", FCVAR_NOTIFY, true, 0.0, true, 7.0);
-	h_CommonLimitAdjust = CreateConVar("l4d_infectedbots_adjust_commonlimit_enable", "1", "If 1, adjust and overrides zombie common limit by this plugin.", FCVAR_NOTIFY, true, 0.0,true, 1.0);
-	h_CommonLimit = CreateConVar("l4d_infectedbots_default_commonlimit", "30", "Sets Default zombie common limit.", FCVAR_NOTIFY, true, 1.0);
-	h_PlayerAddCommonLimitScale = CreateConVar("l4d_infectedbots_add_commonlimit_scale", "1", "If server has more than 4+ alive players, zombie common limit = 'default_commonlimit' + [(alive players - 4) ÷ 'add_commonlimit_scale' × 'add_commonlimit'].", FCVAR_NOTIFY, true, 1.0);
-	h_PlayerAddCommonLimit = CreateConVar("l4d_infectedbots_add_commonlimit", "2", "If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_default_commonlimit' each 'l4d_infectedbots_add_commonlimit_scale' players joins", FCVAR_NOTIFY, true, 0.0);
-	h_CoopInfectedPlayerFlashLight = CreateConVar("l4d_infectedbots_coop_versus_human_light", "1", "If 1, attaches red flash light to human infected player in coop/survival. (Make it clear which infected bot is controlled by player)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_StatusAnnouncementEnable = CreateConVar("l4d_infectedbots_announcement_enable", "1", "If 1, announce current plugin status when the number of alive survivors changes.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_CoopInfectedPlayerGhostState = CreateConVar("l4d_infectedbots_coop_versus_human_ghost_enable", "1", "If 1, human infected player will spawn as ghost state in coop/survival/realism.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_InfectedSpawnSameFrame = CreateConVar("l4d_infectedbots_spawn_on_same_frame", "0", "If 1, infected bots can spawn on the same game frame (careful, this could cause sever laggy)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_WhereToSpawnInfected = CreateConVar("l4d_infectedbots_spawn_where_method", "0", "Where to spawn infected? 0=Near the first ahead survivor. 1=Near the random survivor", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_JoinableTeamsAnnounce = 			CreateConVar("l4d_infectedbots_coop_versus_announce", 					"1", 		"If 1, clients will be announced to on how to join the infected team", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_Coordination = 					CreateConVar("l4d_infectedbots_coordination", 							"0", 		"If 1, bots will only spawn when all other bot spawn timers are at zero.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_InfHUD = 							CreateConVar("l4d_infectedbots_infhud_enable", 							"1", 		"Toggle whether Infected HUD is active or not.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_Announce = 						CreateConVar("l4d_infectedbots_infhud_announce", 						"1", 		"Toggle whether Infected HUD announces itself to clients.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_Idletime_b4slay = 				CreateConVar("l4d_infectedbots_lifespan", 								"30", 		"Amount of seconds before a special infected bot is kicked", FCVAR_NOTIFY, true, 1.0);
+	h_InitialSpawn = 					CreateConVar("l4d_infectedbots_initial_spawn_timer", 					"10", 		"The spawn timer in seconds used when infected bots are spawned for the first time in a map", FCVAR_NOTIFY, true, 0.0);
+	h_HumanCoopLimit = 					CreateConVar("l4d_infectedbots_coop_versus_human_limit", 				"2", 		"Sets the limit for the amount of humans that can join the infected team in coop/survival/realism.", FCVAR_NOTIFY, true, 0.0);
+	h_JoinInfectedAccess = 				CreateConVar("l4d_infectedbots_coop_versus_join_access", 				"z", 		"Players with these flags have access to join infected team in coop/survival/realism. (Empty = Everyone, -1: Nobody)", FCVAR_NOTIFY);
+	h_DisableSpawnsTank = 				CreateConVar("l4d_infectedbots_spawns_disabled_tank", 					"0", 		"If 1, Plugin will disable spawning infected bot when a tank is on the field.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_VersusCoop = 						CreateConVar("l4d_infectedbots_versus_coop", 							"0", 		"If 1, The plugin will force all players to the infected side against the survivor AI for every round and map in versus/scavenge", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_AdjustSpawnTimes = 				CreateConVar("l4d_infectedbots_adjust_spawn_times", 					"1", 		"If 1, The plugin will adjust spawn timers depending on the gamemode and human players on infected team", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_ReducedSpawnTimesOnPlayer = 		CreateConVar("l4d_infectedbots_adjust_reduced_spawn_times_on_player", 	"1", 		"Reduce certain value to maximum spawn timer based per alive player", FCVAR_NOTIFY, true, 0.0);
+	h_SafeSpawn = 						CreateConVar("l4d_infectedbots_safe_spawn", 							"0", 		"If 1, spawn special infected before survivors leave starting safe room area.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_SpawnDistanceMin = 				CreateConVar("l4d_infectedbots_spawn_range_min", 						"350", 		"The minimum of spawn range for infected. (default: 550, coop/realism only)\nThis cvar will also affect common zombie spawn range and ghost infected player spawn range", FCVAR_NOTIFY, true, 0.0, true, 550.0);
+	h_WitchPeriodMax = 					CreateConVar("l4d_infectedbots_witch_spawn_time_max", 					"120.0", 	"Sets the max spawn time for witch spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
+	h_WitchPeriodMin = 					CreateConVar("l4d_infectedbots_witch_spawn_time_min", 					"90.0", 	"Sets the mix spawn time for witch spawned by the plugin in seconds.", FCVAR_NOTIFY, true, 1.0);
+	h_WitchSpawnFinal = 				CreateConVar("l4d_infectedbots_witch_spawn_final", 						"0", 		"If 1, still spawn witch in final stage rescue", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_WitchKillTime = 					CreateConVar("l4d_infectedbots_witch_lifespan", 						"200", 		"Amount of seconds before a witch is kicked. (only remove witches spawned by this plugin)", FCVAR_NOTIFY, true, 1.0);
+	h_SpawnTankProbability = 			CreateConVar("l4d_infectedbots_tank_spawn_probability", 				"5", 		"When each time spawn S.I., how much percent of chance to spawn tank", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	h_ZSDisableGamemode = 				CreateConVar("l4d_infectedbots_sm_zs_disable_gamemode", 				"6", 		"Disable sm_zs in these gamemode (0: None, 1: coop/realism, 2: versus/scavenge, 4: survival, add numbers together)", FCVAR_NOTIFY, true, 0.0, true, 7.0);
+	h_CommonLimitAdjust = 				CreateConVar("l4d_infectedbots_adjust_commonlimit_enable", 				"1", 		"If 1, adjust and overrides zombie common limit by this plugin.", FCVAR_NOTIFY, true, 0.0,true, 1.0);
+	h_CommonLimit = 					CreateConVar("l4d_infectedbots_default_commonlimit", 					"30", 		"Sets Default zombie common limit.", FCVAR_NOTIFY, true, 0.0);
+	h_PlayerAddCommonLimitScale = 		CreateConVar("l4d_infectedbots_add_commonlimit_scale", 					"1", 		"If server has more than 4+ alive players, zombie common limit = 'default_commonlimit' + [(alive players - 4) ÷ 'add_commonlimit_scale' × 'add_commonlimit'].", FCVAR_NOTIFY, true, 1.0);
+	h_PlayerAddCommonLimit = 			CreateConVar("l4d_infectedbots_add_commonlimit", 						"2", 		"If server has more than 4+ alive players, increase the certain value to 'l4d_infectedbots_default_commonlimit' each 'l4d_infectedbots_add_commonlimit_scale' players joins", FCVAR_NOTIFY, true, 0.0);
+	h_CoopInfectedPlayerFlashLight = 	CreateConVar("l4d_infectedbots_coop_versus_human_light", 				"1", 		"If 1, attaches red flash light to human infected player in coop/survival. (Make it clear which infected bot is controlled by player)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_StatusAnnouncementEnable = 		CreateConVar("l4d_infectedbots_announcement_enable", 					"1", 		"If 1, announce current plugin status when the number of alive survivors changes.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_CoopInfectedPlayerGhostState = 	CreateConVar("l4d_infectedbots_coop_versus_human_ghost_enable", 		"1", 		"If 1, human infected player will spawn as ghost state in coop/survival/realism.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_InfectedSpawnSameFrame = 			CreateConVar("l4d_infectedbots_spawn_on_same_frame", 					"0", 		"If 1, infected bots can spawn on the same game frame (careful, this could cause sever laggy)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_WhereToSpawnInfected = 			CreateConVar("l4d_infectedbots_spawn_where_method", 					"0", 		"Where to spawn infected? 0=Near the first ahead survivor. 1=Near the random survivor", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_IncludingDeadPlayers = 			CreateConVar("l4d_infectedbots_calculate_including_dead_player", 		"0", 		"If 1, including 4+ alive and dead players in the server.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_DisableInfectedBot = 				CreateConVar("l4d_infectedbots_disable_infected_bots", 					"0", 		"If 1, disable infected bots spawning in versus/scavenge mode. (Does not disable witch spawn and does not affect director boss spawn)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	g_hCvarMPGameMode = FindConVar("mp_gamemode");
 	g_hCvarMPGameMode.AddChangeHook(ConVarGameMode);
@@ -1023,21 +1057,35 @@ public void OnPluginStart()
 	g_hCvarModesOff.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarModesTog.AddChangeHook(ConVarChanged_Allow);
 	h_Difficulty = FindConVar("z_difficulty");
-	h_common_limit_cvar = FindConVar("z_common_limit");
 
+	h_common_limit_cvar = FindConVar("z_common_limit");
 	director_no_specials = FindConVar("director_no_specials");
 
+	GetOfficalCvars();
+	director_no_specials.AddChangeHook(ConVarChanged_OfficialCvars);
+	h_common_limit_cvar.AddChangeHook(ConVarChanged_OfficialCvars);
+
 	GetCvars();
-	director_no_specials.AddChangeHook(ConVarChanged_Cvars);
-	h_BoomerLimit.AddChangeHook(ConVarChanged_Cvars);
-	h_SmokerLimit.AddChangeHook(ConVarChanged_Cvars);
-	h_HunterLimit.AddChangeHook(ConVarChanged_Cvars);
+	g_hSpawnLimits[SI_BOOMER].AddChangeHook(ConVarChanged_Cvars);
+	g_hSpawnLimits[SI_SMOKER].AddChangeHook(ConVarChanged_Cvars);
+	g_hSpawnLimits[SI_HUNTER].AddChangeHook(ConVarChanged_Cvars);
 	if (g_bL4D2Version)
 	{
-		h_SpitterLimit.AddChangeHook(ConVarChanged_Cvars);
-		h_JockeyLimit.AddChangeHook(ConVarChanged_Cvars);
-		h_ChargerLimit.AddChangeHook(ConVarChanged_Cvars);
+		g_hSpawnLimits[SI_SPITTER].AddChangeHook(ConVarChanged_Cvars);
+		g_hSpawnLimits[SI_JOCKEY].AddChangeHook(ConVarChanged_Cvars);
+		g_hSpawnLimits[SI_CHARGER].AddChangeHook(ConVarChanged_Cvars);
 	}
+	g_hSpawnWeights[SI_BOOMER].AddChangeHook(ConVarChanged_Cvars);
+	g_hSpawnWeights[SI_SMOKER].AddChangeHook(ConVarChanged_Cvars);
+	g_hSpawnWeights[SI_HUNTER].AddChangeHook(ConVarChanged_Cvars);
+	if (g_bL4D2Version)
+	{
+		g_hSpawnWeights[SI_SPITTER].AddChangeHook(ConVarChanged_Cvars);
+		g_hSpawnWeights[SI_JOCKEY].AddChangeHook(ConVarChanged_Cvars);
+		g_hSpawnWeights[SI_CHARGER].AddChangeHook(ConVarChanged_Cvars);
+	}
+	g_hScaleWeights.AddChangeHook(ConVarChanged_Cvars);
+	h_WitchLimit.AddChangeHook(ConVarChanged_Cvars);
 	h_SafeSpawn.AddChangeHook(ConVarChanged_Cvars);
 	h_TankHealth.AddChangeHook(ConVarChanged_Cvars);
 	h_InfectedSpawnTimeMax.AddChangeHook(ConVarChanged_Cvars);
@@ -1067,6 +1115,8 @@ public void OnPluginStart()
 	h_TankSpawnFinal.AddChangeHook(ConVarChanged_Cvars);
 	h_InfectedSpawnSameFrame.AddChangeHook(ConVarChanged_Cvars);
 	h_WhereToSpawnInfected.AddChangeHook(ConVarChanged_Cvars);
+	h_IncludingDeadPlayers.AddChangeHook(ConVarChanged_Cvars);
+	h_DisableInfectedBot.AddChangeHook(ConVarChanged_Cvars);
 
 	g_iMaxPlayerZombies = h_MaxPlayerZombies.IntValue;
 	g_bVersusCoop = h_VersusCoop.BoolValue;
@@ -1149,27 +1199,51 @@ public void OnPluginStart()
 	}
 	vs_max_team_switches = FindConVar("vs_max_team_switches");
 
+	director_allow_infected_bots = FindConVar("director_allow_infected_bots");
+
 	//Autoconfig for plugin
 	AutoExecConfig(true, "l4dinfectedbots");
 }
 
+void ConVarChanged_OfficialCvars(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	GetOfficalCvars();
+}
 
-public void ConVarChanged_Cvars(ConVar convar, const char[] oldValue, const char[] newValue)
+void GetOfficalCvars()
+{
+	director_no_specials_bool = director_no_specials.BoolValue;
+	g_iCvar_z_common_limit = h_common_limit_cvar.IntValue;
+}
+
+
+void ConVarChanged_Cvars(ConVar convar, const char[] oldValue, const char[] newValue)
 {
 	GetCvars();
 }
 
 void GetCvars()
 {
-	g_iBoomerLimit = h_BoomerLimit.IntValue;
-	g_iSmokerLimit = h_SmokerLimit.IntValue;
-	g_iHunterLimit = h_HunterLimit.IntValue;
+	g_iSpawnLimits[SI_BOOMER] = g_hSpawnLimits[SI_BOOMER].IntValue;
+	g_iSpawnLimits[SI_SMOKER] = g_hSpawnLimits[SI_SMOKER].IntValue;
+	g_iSpawnLimits[SI_HUNTER] = g_hSpawnLimits[SI_HUNTER].IntValue;
 	if(g_bL4D2Version)
 	{
-		g_iSpitterLimit = h_SpitterLimit.IntValue;
-		g_iJockeyLimit = h_JockeyLimit.IntValue;
-		g_iChargerLimit = h_ChargerLimit.IntValue;
+		g_iSpawnLimits[SI_CHARGER] = g_hSpawnLimits[SI_CHARGER].IntValue;
+		g_iSpawnLimits[SI_JOCKEY] = g_hSpawnLimits[SI_JOCKEY].IntValue;
+		g_iSpawnLimits[SI_SPITTER] = g_hSpawnLimits[SI_SPITTER].IntValue;
 	}
+	g_iSpawnWeights[SI_BOOMER] = g_hSpawnWeights[SI_BOOMER].IntValue;
+	g_iSpawnWeights[SI_SMOKER] = g_hSpawnWeights[SI_SMOKER].IntValue;
+	g_iSpawnWeights[SI_HUNTER] = g_hSpawnWeights[SI_HUNTER].IntValue;
+	if(g_bL4D2Version)
+	{
+		g_iSpawnWeights[SI_CHARGER] = g_hSpawnWeights[SI_CHARGER].IntValue;
+		g_iSpawnWeights[SI_JOCKEY] = g_hSpawnWeights[SI_JOCKEY].IntValue;
+		g_iSpawnWeights[SI_SPITTER] = g_hSpawnWeights[SI_SPITTER].IntValue;
+	}
+	g_bScaleWeights = g_hScaleWeights.BoolValue;
+	g_iWitchLimit = h_WitchLimit.IntValue;
 	g_bSafeSpawn = h_SafeSpawn.BoolValue;
 	g_iTankHealth = h_TankHealth.IntValue;
 	g_iInfectedSpawnTimeMax = h_InfectedSpawnTimeMax.IntValue;
@@ -1199,8 +1273,8 @@ void GetCvars()
 	g_bTankSpawnFinal = h_TankSpawnFinal.BoolValue;
 	g_bInfectedSpawnSameFrame = h_InfectedSpawnSameFrame.BoolValue;
 	g_iWhereToSpawnInfected = h_WhereToSpawnInfected.IntValue;
-
-	director_no_specials_bool = director_no_specials.BoolValue;
+	g_bIncludingDeadPlayers = h_IncludingDeadPlayers.BoolValue;
+	g_bDisableInfectedBot = h_DisableInfectedBot.BoolValue;
 }
 
 public void ConVarMaxPlayerZombies(ConVar convar, const char[] oldValue, const char[] newValue)
@@ -1238,7 +1312,7 @@ public void ConVarGameMode(ConVar convar, const char[] oldValue, const char[] ne
 
 	if(g_bL4D2Version)
 	{
-		if(g_iCurrentMode != 2 && g_bJoinableTeams)
+		if(L4D_HasPlayerControlledZombies() == false && g_bJoinableTeams)
 		{
 			bDisableSurvivorModelGlow = false;
 			for( int i = 1; i <= MaxClients; i++ )
@@ -1253,7 +1327,7 @@ public void ConVarGameMode(ConVar convar, const char[] oldValue, const char[] ne
 public void ConVarVersusCoop(ConVar convar, const char[] oldValue, const char[] newValue)
 {
 	g_bVersusCoop = h_VersusCoop.BoolValue;
-	if(g_iCurrentMode == 2)
+	if(L4D_HasPlayerControlledZombies() == true)
 	{
 		if (g_bVersusCoop)
 		{
@@ -1292,7 +1366,7 @@ public void ConVarDistanceChanged(ConVar convar, const char[] oldValue, const ch
 public void ConVarCoopVersus(ConVar convar, const char[] oldValue, const char[] newValue)
 {
 	g_bJoinableTeams = h_JoinableTeams.BoolValue;
-	if(g_iCurrentMode != 2)
+	if(L4D_HasPlayerControlledZombies() == false)
 	{
 		if (g_bJoinableTeams)
 		{
@@ -1354,18 +1428,18 @@ void TweakSettings()
 			// If the game is L4D 2...
 			if (g_bL4D2Version)
 			{
-				SetConVarInt(FindConVar("z_smoker_limit"), 0);
-				SetConVarInt(FindConVar("z_boomer_limit"), 0);
-				SetConVarInt(FindConVar("z_hunter_limit"), 0);
-				SetConVarInt(FindConVar("z_spitter_limit"), 0);
-				SetConVarInt(FindConVar("z_jockey_limit"), 0);
-				SetConVarInt(FindConVar("z_charger_limit"), 0);
+				SetConVarInt(FindConVar("z_smoker_limit"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("z_boomer_limit"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("z_hunter_limit"), g_iSpawnLimits[SI_HUNTER]);
+				SetConVarInt(FindConVar("z_spitter_limit"), g_iSpawnLimits[SI_SPITTER]);
+				SetConVarInt(FindConVar("z_jockey_limit"), g_iSpawnLimits[SI_JOCKEY]);
+				SetConVarInt(FindConVar("z_charger_limit"), g_iSpawnLimits[SI_CHARGER]);
 			}
 			else
 			{
-				SetConVarInt(FindConVar("z_gas_limit"), 0);
-				SetConVarInt(FindConVar("z_exploding_limit"), 0);
-				SetConVarInt(FindConVar("z_hunter_limit"), 0);
+				SetConVarInt(FindConVar("z_gas_limit"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("z_exploding_limit"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("z_hunter_limit"), g_iSpawnLimits[SI_HUNTER]);
 			}
 		}
 		case 2: // Versus, Better Versus Infected AI
@@ -1373,18 +1447,18 @@ void TweakSettings()
 			// If the game is L4D 2...
 			if (g_bL4D2Version)
 			{
-				SetConVarInt(FindConVar("z_smoker_limit"), 0);
-				SetConVarInt(FindConVar("z_boomer_limit"), 0);
-				SetConVarInt(FindConVar("z_hunter_limit"), 0);
-				SetConVarInt(FindConVar("z_spitter_limit"), 0);
-				SetConVarInt(FindConVar("z_jockey_limit"), 0);
-				SetConVarInt(FindConVar("z_charger_limit"), 0);
+				SetConVarInt(FindConVar("z_smoker_limit"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("z_boomer_limit"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("z_hunter_limit"), g_iSpawnLimits[SI_HUNTER]);
+				SetConVarInt(FindConVar("z_spitter_limit"), g_iSpawnLimits[SI_SPITTER]);
+				SetConVarInt(FindConVar("z_jockey_limit"), g_iSpawnLimits[SI_JOCKEY]);
+				SetConVarInt(FindConVar("z_charger_limit"), g_iSpawnLimits[SI_CHARGER]);
 			}
 			else
 			{
-				SetConVarInt(FindConVar("z_gas_limit"), 999);
-				SetConVarInt(FindConVar("z_exploding_limit"), 999);
-				SetConVarInt(FindConVar("z_hunter_limit"), 999);
+				SetConVarInt(FindConVar("z_gas_limit"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("z_exploding_limit"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("z_hunter_limit"), g_iSpawnLimits[SI_HUNTER]);
 			}
 
 			if (g_bVersusCoop)
@@ -1394,29 +1468,38 @@ void TweakSettings()
 		{
 			if (g_bL4D2Version)
 			{
-				SetConVarInt(FindConVar("survival_max_smokers"), 0);
-				SetConVarInt(FindConVar("survival_max_boomers"), 0);
-				SetConVarInt(FindConVar("survival_max_hunters"), 0);
-				SetConVarInt(FindConVar("survival_max_spitters"), 0);
-				SetConVarInt(FindConVar("survival_max_jockeys"), 0);
-				SetConVarInt(FindConVar("survival_max_chargers"), 0);
+				SetConVarInt(FindConVar("survival_max_smokers"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("survival_max_boomers"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("survival_max_hunters"), g_iSpawnLimits[SI_HUNTER]);
+				SetConVarInt(FindConVar("survival_max_spitters"), g_iSpawnLimits[SI_SPITTER]);
+				SetConVarInt(FindConVar("survival_max_jockeys"), g_iSpawnLimits[SI_JOCKEY]);
+				SetConVarInt(FindConVar("survival_max_chargers"), g_iSpawnLimits[SI_CHARGER]);
 				SetConVarInt(FindConVar("survival_max_specials"), g_iMaxPlayerZombies);
-				SetConVarInt(FindConVar("z_smoker_limit"), 0);
-				SetConVarInt(FindConVar("z_boomer_limit"), 0);
-				SetConVarInt(FindConVar("z_hunter_limit"), 0);
-				SetConVarInt(FindConVar("z_spitter_limit"), 0);
-				SetConVarInt(FindConVar("z_jockey_limit"), 0);
-				SetConVarInt(FindConVar("z_charger_limit"), 0);
+				SetConVarInt(FindConVar("survival_tank_stage_interval"), 9999999);
+				SetConVarInt(FindConVar("survival_special_limit_increase"), 0);
+				SetConVarInt(FindConVar("survival_special_spawn_interval"), 9999999);
+				SetConVarInt(FindConVar("survival_special_stage_interval"), 9999999);
+
+				SetConVarInt(FindConVar("z_smoker_limit"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("z_boomer_limit"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("z_hunter_limit"), g_iSpawnLimits[SI_HUNTER]);
+				SetConVarInt(FindConVar("z_spitter_limit"), g_iSpawnLimits[SI_SPITTER]);
+				SetConVarInt(FindConVar("z_jockey_limit"), g_iSpawnLimits[SI_JOCKEY]);
+				SetConVarInt(FindConVar("z_charger_limit"), g_iSpawnLimits[SI_CHARGER]);
 			}
 			else
 			{
-				SetConVarInt(FindConVar("holdout_max_smokers"), 0);
-				SetConVarInt(FindConVar("holdout_max_boomers"), 0);
-				SetConVarInt(FindConVar("holdout_max_hunters"), 0);
+				SetConVarInt(FindConVar("holdout_max_smokers"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("holdout_max_boomers"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("holdout_max_hunters"), g_iSpawnLimits[SI_HUNTER]);
 				SetConVarInt(FindConVar("holdout_max_specials"), g_iMaxPlayerZombies);
-				SetConVarInt(FindConVar("z_gas_limit"), 0);
-				SetConVarInt(FindConVar("z_exploding_limit"), 0);
-				SetConVarInt(FindConVar("z_hunter_limit"), 0);
+				SetConVarInt(FindConVar("holdout_tank_stage_interval"), 9999999);
+				SetConVarInt(FindConVar("holdout_special_spawn_interval"), 9999999);
+				SetConVarInt(FindConVar("holdout_special_stage_interval"), 9999999);
+
+				SetConVarInt(FindConVar("z_gas_limit"), g_iSpawnLimits[SI_SMOKER]);
+				SetConVarInt(FindConVar("z_exploding_limit"), g_iSpawnLimits[SI_BOOMER]);
+				SetConVarInt(FindConVar("z_hunter_limit"), g_iSpawnLimits[SI_HUNTER]);
 			}
 		}
 	}
@@ -1428,13 +1511,11 @@ void TweakSettings()
 	//SetConVarInt(FindConVar("z_spawn_flow_limit"), 50000);
 	if (g_bL4D2Version)
 	{
-		SetConVarInt(FindConVar("director_allow_infected_bots"), 0);
+		SetConVarInt(director_allow_infected_bots, 0);
 		//SetConVarInt(FindConVar("versus_special_respawn_interval"), 99999999);
 	}
-	#if DEBUG
-	LogMessage("Tweaking Settings");
-	#endif
 
+	//LogMessage("Tweaking Settings");
 }
 
 void ResetCvars()
@@ -1454,6 +1535,10 @@ void ResetCvars()
 			ResetConVar(FindConVar("survival_max_jockeys"), true, true);
 			ResetConVar(FindConVar("survival_max_chargers"), true, true);
 			ResetConVar(FindConVar("survival_max_specials"), true, true);
+			ResetConVar(FindConVar("survival_tank_stage_interval"), true, true);
+			ResetConVar(FindConVar("survival_special_limit_increase"), true, true);
+			ResetConVar(FindConVar("survival_special_spawn_interval"), true, true);
+			ResetConVar(FindConVar("survival_special_stage_interval"), true, true);
 		}
 		else
 		{
@@ -1461,6 +1546,9 @@ void ResetCvars()
 			ResetConVar(FindConVar("holdout_max_boomers"), true, true);
 			ResetConVar(FindConVar("holdout_max_hunters"), true, true);
 			ResetConVar(FindConVar("holdout_max_specials"), true, true);
+			ResetConVar(FindConVar("holdout_tank_stage_interval"), true, true);
+			ResetConVar(FindConVar("holdout_special_spawn_interval"), true, true);
+			ResetConVar(FindConVar("holdout_special_stage_interval"), true, true);
 		}
 	}
 	else if (g_iCurrentMode == 2)
@@ -1474,6 +1562,10 @@ void ResetCvars()
 			ResetConVar(FindConVar("survival_max_jockeys"), true, true);
 			ResetConVar(FindConVar("survival_max_chargers"), true, true);
 			ResetConVar(FindConVar("survival_max_specials"), true, true);
+			ResetConVar(FindConVar("survival_tank_stage_interval"), true, true);
+			ResetConVar(FindConVar("survival_special_limit_increase"), true, true);
+			ResetConVar(FindConVar("survival_special_spawn_interval"), true, true);
+			ResetConVar(FindConVar("survival_special_stage_interval"), true, true);
 		}
 		else
 		{
@@ -1481,6 +1573,9 @@ void ResetCvars()
 			ResetConVar(FindConVar("holdout_max_boomers"), true, true);
 			ResetConVar(FindConVar("holdout_max_hunters"), true, true);
 			ResetConVar(FindConVar("holdout_max_specials"), true, true);
+			ResetConVar(FindConVar("holdout_tank_stage_interval"), true, true);
+			ResetConVar(FindConVar("holdout_special_spawn_interval"), true, true);
+			ResetConVar(FindConVar("holdout_special_stage_interval"), true, true);
 		}
 	}
 	else if (g_iCurrentMode == 3)
@@ -1526,7 +1621,7 @@ public void Event_SurvivalRoundStart(Event event, const char[] name, bool dontBr
 	}
 }
 
-public Action Timer_PluginStart(Handle timer)
+Action Timer_PluginStart(Handle timer)
 {
 	if (g_bCvarAllow == false)
 		return Plugin_Continue;
@@ -1553,7 +1648,7 @@ public Action Timer_PluginStart(Handle timer)
 	CreateTimer(0.4, MaxSpecialsSet);
 
 	// This little part is needed because some events just can't execute when another round starts.
-	if (g_iCurrentMode == 2 && g_bVersusCoop)
+	if (L4D_HasPlayerControlledZombies() && g_bVersusCoop)
 	{
 		for (int i=1; i<=MaxClients; i++)
 		{
@@ -1572,7 +1667,7 @@ public Action Timer_PluginStart(Handle timer)
 
 	}
 	// Kill the player if they are infected and its not versus (prevents survival finale bug and player ghosts when there shouldn't be)
-	if (g_iCurrentMode != 2)
+	if (L4D_HasPlayerControlledZombies() == false)
 	{
 		for (int i=1; i<=MaxClients; i++)
 		{
@@ -1607,12 +1702,12 @@ public Action Timer_PluginStart(Handle timer)
 	infHUDTimer = CreateTimer(1.0, showInfHUD, _, TIMER_REPEAT);
 
 	#if DEBUG
-		PrintToChatAll("[TS] PluginStart()!");
+		LogMessage("[TS] PluginStart()!");
 	#endif
 	delete PlayerLeftStartTimer;
 	PlayerLeftStartTimer = CreateTimer(1.0, Timer_PlayerLeftStart, _, TIMER_REPEAT);
 
-	if (g_bJoinableTeams && g_iCurrentMode != 2 || g_bVersusCoop && g_iCurrentMode == 2)
+	if (g_bJoinableTeams && L4D_HasPlayerControlledZombies() == false || g_bVersusCoop && L4D_HasPlayerControlledZombies())
 	{
 		if (g_bL4D2Version)
 		{
@@ -1648,11 +1743,11 @@ public void evtPlayerFirstSpawned(Event event, const char[] name, bool dontBroad
 
 	// Versus Coop code, puts all players on infected at start, delay is added to prevent a weird glitch
 
-	if (g_iCurrentMode == 2 && g_bVersusCoop)
+	if (L4D_HasPlayerControlledZombies() && g_bVersusCoop)
 		CreateTimer(0.1, Timer_VersusCoopTeamChanger, client, TIMER_FLAG_NO_MAPCHANGE);
 
 	// Kill the player if they are infected and its not versus (prevents survival finale bug and player ghosts when there shouldn't be)
-	if (g_iCurrentMode != 2)
+	if (L4D_HasPlayerControlledZombies() == false)
 	{
 		if (GetClientTeam(client)==TEAM_INFECTED)
 		{
@@ -1851,7 +1946,6 @@ void IsAllowed()
 		HookEvent("player_hurt", evtInfectedHurt);
 		HookEvent("player_team", evtTeamSwitch);
 		HookEvent("ghost_spawn_time", evtInfectedWaitSpawn);
-		HookEvent("spawner_give_item", evtUnlockVersusDoor);
 		HookEvent("player_first_spawn", evtPlayerFirstSpawned);
 		HookEvent("player_entered_start_area", evtPlayerFirstSpawned);
 		HookEvent("player_entered_checkpoint", evtPlayerFirstSpawned);
@@ -1901,7 +1995,6 @@ void IsAllowed()
 		UnhookEvent("player_hurt", evtInfectedHurt);
 		UnhookEvent("player_team", evtTeamSwitch);
 		UnhookEvent("ghost_spawn_time", evtInfectedWaitSpawn);
-		UnhookEvent("spawner_give_item", evtUnlockVersusDoor);
 		UnhookEvent("player_first_spawn", evtPlayerFirstSpawned);
 		UnhookEvent("player_entered_start_area", evtPlayerFirstSpawned);
 		UnhookEvent("player_entered_checkpoint", evtPlayerFirstSpawned);
@@ -1913,6 +2006,7 @@ void IsAllowed()
 		UnhookEvent("player_now_it", Event_GotVomit);
 		UnhookEvent("revive_success", Event_revive_success);//救起倒地的or 懸掛的
 		UnhookEvent("player_ledge_release", Event_ledge_release);//懸掛的玩家放開了
+
 
 		// Hook a sound
 		RemoveNormalSoundHook(HookSound_Callback);
@@ -2006,13 +2100,13 @@ public void OnGamemode(const char[] output, int caller, int activator, float del
 }
 public Action Timer_PlayerLeftStart(Handle Timer)
 {
-	if( g_bCvarAllow == false || g_iCurrentMode == 3 )
+	if( g_bCvarAllow == false || g_iCurrentMode == 3 )//生存模式之下 always true
 	{
 		PlayerLeftStartTimer = null;
 		return Plugin_Stop;
 	}
 
-	if (L4D_HasAnySurvivorLeftSafeArea() || g_bSafeSpawn) //生存模式之下 always true
+	if (L4D_HasAnySurvivorLeftSafeArea() || g_bSafeSpawn ) 
 	{
 		g_bLeftSaveRoom = true;
 		
@@ -2049,7 +2143,7 @@ public void evtUnlockVersusDoor(Event event, const char[] name, bool dontBroadca
 public Action InfectedBotBooterVersus(Handle Timer)
 {
 	//This is to check if there are any extra bots and boot them if necessary, excluding tanks, versus only
-	if (g_iCurrentMode == 2)
+	if (L4D_HasPlayerControlledZombies())
 	{
 		// current count ...
 		int total;
@@ -2142,7 +2236,7 @@ public Action CheckGameMode(int client, int args)
 {
 	if (client)
 	{
-		PrintToChat(client, "[TS] g_iCurrentMode = %i", g_iCurrentMode);
+		PrintToChat(client, "[TS] g_iCurrentMode = %i, L4D_HasPlayerControlledZombies(): %d", g_iCurrentMode, L4D_HasPlayerControlledZombies());
 	}
 
 	return Plugin_Handled;
@@ -2154,7 +2248,7 @@ public Action CheckQueue(int client, int args)
 
 	if (client)
 	{
-		if (g_iCurrentMode == 2)
+		if (L4D_HasPlayerControlledZombies())
 			CountInfected();
 		else
 			CountInfected_Coop();
@@ -2169,7 +2263,7 @@ public Action JoinInfected(int client, int args)
 {
 	if( g_bCvarAllow == false) return Plugin_Handled;
 
-	if (client && (g_iCurrentMode == 1 || g_iCurrentMode == 3) && g_bJoinableTeams)
+	if (client && L4D_HasPlayerControlledZombies() == false && g_bJoinableTeams)
 	{
 		if(HasAccess(client, g_sJoinInfectedAccesslvl) == true)
 		{
@@ -2195,7 +2289,7 @@ public Action JoinSurvivors(int client, int args)
 {
 	if( g_bCvarAllow == false) return Plugin_Handled;
 
-	if (client && (g_iCurrentMode == 1 || g_iCurrentMode == 3))
+	if (client && L4D_HasPlayerControlledZombies() == false)
 	{
 		SwitchToSurvivors(client);
 	}
@@ -2395,7 +2489,7 @@ public Action AnnounceJoinInfected(Handle timer, int client)
 {
 	if (IsClientInGame(client) && (!IsFakeClient(client)))
 	{
-		if (g_bJoinableTeamsAnnounce && g_bJoinableTeams && g_iCurrentMode != 2)
+		if (g_bJoinableTeamsAnnounce && g_bJoinableTeams && L4D_HasPlayerControlledZombies() == false)
 		{
 			C_PrintToChat(client,"[{olive}TS{default}] %T","Join infected team in coop/survival/realism",client);
 			C_PrintToChat(client,"%T","Join survivor team",client);
@@ -2547,7 +2641,7 @@ public void evtPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	if (!client || !IsClientInGame(client) || GetClientTeam(client) != TEAM_INFECTED ) return;
 
 	// Removes Sphere bubbles in the map when a player dies
-	if (!IsFakeClient(client) && g_iCurrentMode != 2)
+	if (!IsFakeClient(client) && L4D_HasPlayerControlledZombies() == false)
 	{
 		CreateTimer(0.1, ScrimmageTimer, client, TIMER_FLAG_NO_MAPCHANGE);
 	}
@@ -2556,10 +2650,12 @@ public void evtPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	if (g_bHasRoundEnded || g_bInitialSpawn) return;
 
 	// if victim was a bot, we setup a timer to spawn a int bot ...
-	if (g_iCurrentMode == 2)
+	if (L4D_HasPlayerControlledZombies())
 	{
-		if (IsFakeClient(client)/* && !IsPlayerTank(client)*/)
+		if (IsFakeClient(client))
 		{
+			if(g_bDisableInfectedBot) return;
+			
 			int SpawnTime = GetRandomInt(g_iInfectedSpawnTimeMin, g_iInfectedSpawnTimeMax);
 			if (g_bAdjustSpawnTimes && g_iMaxPlayerZombies != HumansOnInfected())
 				SpawnTime = SpawnTime  - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer);
@@ -2571,6 +2667,9 @@ public void evtPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 			#endif
 			respawnDelay[client] = SpawnTime;
 			InfectedBotQueue++;
+
+			if( g_bCoordination && IsPlayerTank(client)) respawnDelay[client] = 0;
+			
 			for(int i = 1; i <= L4D_MAXPLAYERS; i++)
 			{
 				if(SpawnInfectedBotTimer[i] == null)
@@ -2579,6 +2678,12 @@ public void evtPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 					break;
 				}
 			}
+		}
+		else
+		{
+			//真人玩家的復活時間是根據官方指令設定
+			//z_ghost_delay_min 20
+			//z_ghost_delay_max 30 
 		}
 
 		#if DEBUG
@@ -2593,18 +2698,20 @@ public void evtPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		{
 			if(IsFakeClient(client))
 			{
-				SpawnTime = SpawnTime - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() - 1) * 4;
+				SpawnTime = SpawnTime - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() * 3);
 				if(SpawnTime <= 0) SpawnTime = 1;
 			}
 			else
 			{
-				SpawnTime = g_iInfectedSpawnTimeMin - TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer + (HumansOnInfected() - 1) * 3;
+				SpawnTime = g_iInfectedSpawnTimeMin - TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer + (HumansOnInfected() * 3);
 				if(SpawnTime <= 6) SpawnTime = 6;
 			}
 		}
 		respawnDelay[client] = SpawnTime;
-
 		InfectedBotQueue++;
+
+		if( g_bCoordination && IsPlayerTank(client)) respawnDelay[client] = 0;
+
 		for(int i = 1; i <= L4D_MAXPLAYERS; i++)
 		{
 			if(SpawnInfectedBotTimer[i] == null)
@@ -2673,7 +2780,7 @@ public Action PlayerChangeTeamCheck(Handle timer, int userid)
 		delete DisplayTimer;
 		DisplayTimer = CreateTimer(1.0,Timer_CountSurvivor);
 
-		if(g_iCurrentMode != 2)
+		if(L4D_HasPlayerControlledZombies() == false)
 		{
 			int iTeam = GetClientTeam(client);
 			if(iTeam == TEAM_INFECTED)
@@ -2760,23 +2867,23 @@ public Action PlayerChangeTeamCheck2(Handle timer, DataPack pack)
 	if (client && IsClientInGame(client) && !IsFakeClient(client))
 	{
 		int newteam = GetClientTeam(client);
-		if (g_iCurrentMode == 2)
+		if (L4D_HasPlayerControlledZombies())
 		{
-			if(!g_bHasRoundEnded && g_bLeftSaveRoom)
+			if(g_bHasRoundEnded || !g_bLeftSaveRoom) return Plugin_Continue;
+			if(g_bDisableInfectedBot) return Plugin_Continue;
+			
+			if (oldteam == 3)
 			{
-				if (oldteam == 3)
-				{
-					CheckIfBotsNeeded(-1);
-				}
-				if (newteam == 3)
-				{
-					CheckIfBotsNeeded(-1);
-					//Kick Timer
-					CreateTimer(1.0, InfectedBotBooterVersus, _, TIMER_FLAG_NO_MAPCHANGE);
-					#if DEBUG
-					LogMessage("A player switched to infected, attempting to boot a bot");
-					#endif
-				}
+				CheckIfBotsNeeded(-1);
+			}
+			if (newteam == 3)
+			{
+				CheckIfBotsNeeded(-1);
+				//Kick Timer
+				CreateTimer(1.0, InfectedBotBooterVersus, _, TIMER_FLAG_NO_MAPCHANGE);
+				#if DEBUG
+				LogMessage("A player switched to infected, attempting to boot a bot");
+				#endif
 			}
 		}
 		else
@@ -2871,7 +2978,7 @@ public void OnClientDisconnect(int client)
 
 	if(g_bCvarAllow == false) return;
 
-	if(!IsFakeClient(client) && g_iCurrentMode != 2 && CheckRealPlayers_InSV() == false)
+	if(!IsFakeClient(client) && L4D_HasPlayerControlledZombies() == false && CheckRealPlayers_InSV(client) == false)
 	{
 		if (!g_bL4D2Version)
 		{
@@ -2897,10 +3004,12 @@ public void OnClientDisconnect(int client)
 		if (GetClientTeam(client) == TEAM_INFECTED && IsPlayerAlive(client))
 		{
 			int SpawnTime = 0;
-			if (g_iCurrentMode == 2)
+			if (L4D_HasPlayerControlledZombies())
 			{
 				if (IsFakeClient(client))
 				{
+					if(g_bDisableInfectedBot) return;
+
 					SpawnTime = GetRandomInt(g_iInfectedSpawnTimeMin, g_iInfectedSpawnTimeMax);
 					if (g_bAdjustSpawnTimes && g_iMaxPlayerZombies != HumansOnInfected())
 						SpawnTime = SpawnTime  - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer);
@@ -2920,12 +3029,12 @@ public void OnClientDisconnect(int client)
 				{
 					if(IsFakeClient(client))
 					{
-						SpawnTime = SpawnTime - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() - 1) * 4;
+						SpawnTime = SpawnTime - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() * 3);
 						if(SpawnTime <= 0) SpawnTime = 1;
 					}
 					else
 					{
-						SpawnTime = g_iInfectedSpawnTimeMin - TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer + (HumansOnInfected() - 1) * 3;
+						SpawnTime = g_iInfectedSpawnTimeMin - TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer + (HumansOnInfected() * 2);
 						if(SpawnTime <= 6) SpawnTime = 6;
 					}
 				}		
@@ -2936,6 +3045,8 @@ public void OnClientDisconnect(int client)
 			#endif
 			respawnDelay[client] = SpawnTime;
 			InfectedBotQueue++;
+
+			if( g_bCoordination && IsPlayerTank(client)) respawnDelay[client] = 0;
 			
 			for(int i = 1; i <= L4D_MAXPLAYERS; i++)
 			{
@@ -2975,7 +3086,7 @@ void CheckIfBotsNeeded(int spawn_type)
 	#endif
 
 	// First, we count the infected
-	if (g_iCurrentMode == 2)
+	if (L4D_HasPlayerControlledZombies())
 	{
 		CountInfected();
 		// PrintToChatAll("InfectedRealCount: %d, InfectedRealQueue: %d, InfectedBotCount: %d, InfectedBotQueue: %d, g_iMaxPlayerZombies: %d", InfectedRealCount, InfectedRealQueue, InfectedBotCount, InfectedBotQueue, g_iMaxPlayerZombies);
@@ -3043,7 +3154,7 @@ void CheckIfBotsNeeded(int spawn_type)
 	else if (spawn_type == -1) // player change team from infected or switch team to infected
 	{
 		int SpawnTime = 0;
-		if (g_iCurrentMode == 2)
+		if (L4D_HasPlayerControlledZombies())
 		{
 			SpawnTime = GetRandomInt(g_iInfectedSpawnTimeMin, g_iInfectedSpawnTimeMax);
 			if (g_bAdjustSpawnTimes && g_iMaxPlayerZombies != HumansOnInfected()) SpawnTime = SpawnTime  - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer);
@@ -3051,7 +3162,7 @@ void CheckIfBotsNeeded(int spawn_type)
 		else
 		{
 			SpawnTime = GetRandomInt(g_iInfectedSpawnTimeMin, g_iInfectedSpawnTimeMax);
-			if(g_bAdjustSpawnTimes) SpawnTime = SpawnTime - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() - 1) * 4;
+			if(g_bAdjustSpawnTimes) SpawnTime = SpawnTime - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() * 3);
 		}
 		if(SpawnTime < 3) SpawnTime = 3;
 
@@ -3079,7 +3190,7 @@ void CheckIfBotsNeeded2()
 {
 	if(!g_bHasRoundEnded && !g_bInitialSpawn && SpawnInfectedBotTimer[0] == null)
 	{
-		if (g_iCurrentMode == 2)
+		if (L4D_HasPlayerControlledZombies())
 		{
 			CountInfected();
 			if ( (InfectedRealCount + InfectedRealQueue + InfectedBotCount + InfectedBotQueue) < g_iMaxPlayerZombies)
@@ -3099,7 +3210,7 @@ void CheckIfBotsNeeded2()
 			if ( (InfectedRealCount + InfectedBotCount + InfectedBotQueue) < g_iMaxPlayerZombies )
 			{
 				int SpawnTime = GetRandomInt(g_iInfectedSpawnTimeMin, g_iInfectedSpawnTimeMax);
-				if (g_bAdjustSpawnTimes) SpawnTime = SpawnTime  - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() - 1) * 4;
+				if (g_bAdjustSpawnTimes) SpawnTime = SpawnTime  - (TrueNumberOfAliveSurvivors() * g_iReducedSpawnTimesOnPlayer) + (HumansOnInfected() * 3);
 				if(SpawnTime < 3) SpawnTime = 3;
 				InfectedBotQueue++;
 
@@ -3236,35 +3347,32 @@ public Action Timer_RestoreColor(Handle timer, int client)
 	return Plugin_Continue;
 }
 
-public Action KickWitch_Timer(Handle timer, int ref)
+Action KickWitch_Timer(Handle timer, int ref)
 {
 	if( g_bCvarAllow == false) return Plugin_Continue;
 
 	if(IsValidEntRef(ref))
 	{
 		int entity = EntRefToEntIndex(ref);
-		if(IsWitch(entity))
+		bool bKill = true;
+		float clientOrigin[3];
+		float witchOrigin[3];
+		GetEntPropVector(entity, Prop_Send, "m_vecOrigin", witchOrigin);
+		for (int i = 1; i <= MaxClients; i++)
 		{
-			bool bKill = true;
-			float clientOrigin[3];
-			float witchOrigin[3];
-			GetEntPropVector(entity, Prop_Send, "m_vecOrigin", witchOrigin);
-			for (int i = 1; i <= MaxClients; i++)
+			if(IsClientInGame(i) && GetClientTeam(i) == TEAM_SURVIVORS && IsPlayerAlive(i))
 			{
-				if(IsClientInGame(i) && GetClientTeam(i) == TEAM_SURVIVORS && IsPlayerAlive(i))
+				GetClientAbsOrigin(i, clientOrigin);
+				if (GetVectorDistance(clientOrigin, witchOrigin, true) < Pow(1500.0, 2.0))
 				{
-					GetClientAbsOrigin(i, clientOrigin);
-					if (GetVectorDistance(clientOrigin, witchOrigin, true) < Pow(1500.0,2.0))
-					{
-						bKill = false;
-						break;
-					}
+					bKill = false;
+					break;
 				}
 			}
-
-			if(bKill) AcceptEntityInput(ref, "kill"); //remove witch
-			else CreateTimer(g_fWitchKillTime,KickWitch_Timer,EntIndexToEntRef(entity),TIMER_FLAG_NO_MAPCHANGE);
 		}
+
+		if(bKill) AcceptEntityInput(ref, "kill"); //remove witch
+		else CreateTimer(g_fWitchKillTime,KickWitch_Timer,EntIndexToEntRef(entity),TIMER_FLAG_NO_MAPCHANGE);
 	}
 
 	return Plugin_Continue;
@@ -3342,7 +3450,7 @@ public Action TankSpawner(Handle timer, int tank)
 
 public void evtBotReplacedPlayer(Event event, const char[] name, bool dontBroadcast) 
 {
-	if(g_iCurrentMode != 2) //not versus
+	if(L4D_HasPlayerControlledZombies() == false) //not versus
 	{
 		int bot = GetClientOfUserId(event.GetInt("bot"));
 		int playerid = event.GetInt("player");
@@ -3482,21 +3590,9 @@ public void evtFinaleStart(Event event, const char[] name, bool dontBroadcast)
 
 int BotTypeNeeded()
 {
-	#if DEBUG
-	LogMessage("Determining Bot type now");
-	#endif
-	#if DEBUG
-		PrintToChatAll("[TS] Determining Bot type now");
-	#endif
-
 	// current count ...
-	int boomers=0;
-	int smokers=0;
-	int hunters=0;
-	int spitters=0;
-	int jockeys=0;
-	int chargers=0;
-	int tanks=0;
+	for (int i = 0; i < NUM_TYPES_INFECTED_MAX; i++)
+		g_iSpawnCounts[i] = 0;
 
 	for (int i=1;i<=MaxClients;i++)
 	{
@@ -3508,19 +3604,19 @@ int BotTypeNeeded()
 			{
 				// We count depending on class ...
 				if (IsPlayerSmoker(i))
-					smokers++;
+					g_iSpawnCounts[SI_SMOKER]++;
 				else if (IsPlayerBoomer(i))
-					boomers++;
+					g_iSpawnCounts[SI_BOOMER]++;
 				else if (IsPlayerHunter(i))
-					hunters++;
+					g_iSpawnCounts[SI_HUNTER]++;
 				else if (IsPlayerTank(i))
-					tanks++;
+					g_iSpawnCounts[SI_TANK]++;
 				else if (g_bL4D2Version && IsPlayerSpitter(i))
-					spitters++;
+					g_iSpawnCounts[SI_SPITTER]++;
 				else if (g_bL4D2Version && IsPlayerJockey(i))
-					jockeys++;
+					g_iSpawnCounts[SI_JOCKEY]++;
 				else if (g_bL4D2Version && IsPlayerCharger(i))
-					chargers++;
+					g_iSpawnCounts[SI_CHARGER]++;
 			}
 		}
 	}
@@ -3528,8 +3624,8 @@ int BotTypeNeeded()
 	if  (g_bL4D2Version)
 	{
 		if ( ( (g_bFinaleStarted && g_bTankSpawnFinal == true) || !g_bFinaleStarted ) &&
-			tanks < g_iTankLimit && 
-			GetRandomInt(1, 100) <= g_iSpawnTankProbability ) 
+			g_iSpawnCounts[SI_TANK] < g_iTankLimit &&
+			GetRandomInt(1, 100) <= g_iSpawnTankProbability) 
 		{
 			#if DEBUG
 			LogMessage("Bot type returned Tank");
@@ -3538,13 +3634,13 @@ int BotTypeNeeded()
 		}
 		else //spawn other S.I.
 		{
-			int random = GetRandomInt(1, 6);
+			/*int random = GetRandomInt(1, 6);
 			int i=0;
 			while(i++<5)
 			{
 				if (random == 1)
 				{
-					if ((smokers < g_iSmokerLimit) && (canSpawnSmoker))
+					if (smokers < g_iSmokerLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Smoker");
@@ -3555,7 +3651,7 @@ int BotTypeNeeded()
 				}
 				if (random == 2)
 				{
-					if ((boomers < g_iBoomerLimit) && (canSpawnBoomer))
+					if (boomers < g_iBoomerLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Boomer");
@@ -3566,7 +3662,7 @@ int BotTypeNeeded()
 				}
 				if (random == 3)
 				{
-					if ((hunters < g_iHunterLimit) && (canSpawnHunter))
+					if (hunters < g_iHunterLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Hunter");
@@ -3577,7 +3673,7 @@ int BotTypeNeeded()
 				}
 				if (random == 4)
 				{
-					if ((spitters < g_iSpitterLimit) && (canSpawnSpitter))
+					if (spitters < g_iSpitterLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Spitter");
@@ -3588,7 +3684,7 @@ int BotTypeNeeded()
 				}
 				if (random == 5)
 				{
-					if ((jockeys < g_iJockeyLimit) && (canSpawnJockey))
+					if (jockeys < g_iJockeyLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Jockey");
@@ -3599,7 +3695,7 @@ int BotTypeNeeded()
 				}
 				if (random == 6)
 				{
-					if ((chargers < g_iChargerLimit) && (canSpawnCharger))
+					if (chargers < g_iChargerLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Charger");
@@ -3608,14 +3704,16 @@ int BotTypeNeeded()
 					}
 					random = 1;
 				}
-			}
+			}*/
+
+			return GenerateIndex()+1;
 		}
 	}
 	else
 	{
 		if ( ( (g_bFinaleStarted && g_bTankSpawnFinal == true) || !g_bFinaleStarted ) &&
-			tanks < g_iTankLimit && 
-			GetRandomInt(1, 100) <= g_iSpawnTankProbability ) 
+			g_iSpawnCounts[SI_TANK] < g_iTankLimit &&
+			GetRandomInt(1, 100) <= g_iSpawnTankProbability) 
 		{
 			#if DEBUG
 			LogMessage("Bot type returned Tank");
@@ -3624,14 +3722,14 @@ int BotTypeNeeded()
 		}
 		else
 		{
-			int random = GetRandomInt(1, 3);
+			/*int random = GetRandomInt(1, 3);
 
 			int i=0;
 			while(i++<10)
 			{
 				if (random == 1)
 				{
-					if ((smokers < g_iSmokerLimit) && (canSpawnSmoker)) // we need a smoker ???? can we spawn a smoker ??? is smoker bot allowed ??
+					if (smokers < g_iSmokerLimit)
 					{
 						#if DEBUG
 						LogMessage("Returning Smoker");
@@ -3642,7 +3740,7 @@ int BotTypeNeeded()
 				}
 				if (random == 2)
 				{
-					if ((boomers < g_iBoomerLimit) && (canSpawnBoomer))
+					if (boomers < g_iBoomerLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Boomer");
@@ -3653,7 +3751,7 @@ int BotTypeNeeded()
 				}
 				if (random == 3)
 				{
-					if ((hunters < g_iHunterLimit) && (canSpawnHunter))
+					if (hunters < g_iHunterLimit)
 					{
 						#if DEBUG
 						LogMessage("Bot type returned Hunter");
@@ -3663,10 +3761,10 @@ int BotTypeNeeded()
 					random=1;
 				}
 			}
+			*/
+			return GenerateIndex()+1;
 		}
 	}
-	return 0;
-
 }
 
 public Action Timer_Spawn_InfectedBot(Handle timer, int index)
@@ -3704,8 +3802,16 @@ public Action Timer_Spawn_InfectedBot(Handle timer, int index)
 	}
 
 	// First we get the infected count
-	if (g_iCurrentMode == 2)
+	if (L4D_HasPlayerControlledZombies())
 	{
+		if(g_bDisableInfectedBot)
+		{
+			if(InfectedBotQueue > 0) InfectedBotQueue--;
+
+			SpawnInfectedBotTimer[index] = null;
+			return Plugin_Continue;
+		}
+
 		CountInfected();
 
 		// PrintToChatAll("InfectedRealCount: %d, InfectedRealQueue: %d, InfectedBotCount: %d, g_iMaxPlayerZombies: %d", InfectedRealCount, InfectedRealQueue, InfectedBotCount, g_iMaxPlayerZombies);
@@ -3793,7 +3899,7 @@ public Action Timer_Spawn_InfectedBot(Handle timer, int index)
 					resetGhost[i] = true;
 					SetGhostStatus(i, false);
 				}
-				else if (!IsPlayerAlive(i) && g_iCurrentMode == 2) // if player is just dead
+				else if (!IsPlayerAlive(i) && L4D_HasPlayerControlledZombies()) // if player is just dead
 				{
 					resetLife[i] = true;
 					SetLifeState(i, false);
@@ -4342,6 +4448,11 @@ public void OnPluginEnd()
 		ResetConVar(FindConVar("survival_max_jockeys"), true, true);
 		ResetConVar(FindConVar("survival_max_chargers"), true, true);
 		ResetConVar(FindConVar("survival_max_specials"), true, true);
+		ResetConVar(FindConVar("survival_tank_stage_interval"), true, true);
+		ResetConVar(FindConVar("survival_special_limit_increase"), true, true);
+		ResetConVar(FindConVar("survival_special_spawn_interval"), true, true);
+		ResetConVar(FindConVar("survival_special_stage_interval"), true, true);
+
 		ResetConVar(FindConVar("z_smoker_limit"), true, true);
 		ResetConVar(FindConVar("z_boomer_limit"), true, true);
 		ResetConVar(FindConVar("z_hunter_limit"), true, true);
@@ -4355,6 +4466,10 @@ public void OnPluginEnd()
 		ResetConVar(FindConVar("holdout_max_boomers"), true, true);
 		ResetConVar(FindConVar("holdout_max_hunters"), true, true);
 		ResetConVar(FindConVar("holdout_max_specials"), true, true);
+		ResetConVar(FindConVar("holdout_tank_stage_interval"), true, true);
+		ResetConVar(FindConVar("holdout_special_spawn_interval"), true, true);
+		ResetConVar(FindConVar("holdout_special_stage_interval"), true, true);
+
 		ResetConVar(FindConVar("z_gas_limit"), true, true);
 		ResetConVar(FindConVar("z_exploding_limit"), true, true);
 		ResetConVar(FindConVar("z_hunter_limit"), true, true);
@@ -4367,7 +4482,7 @@ public void OnPluginEnd()
 	{
 		//ResetConVar(FindConVar("z_finale_spawn_tank_safety_range"), true, true);
 		//ResetConVar(FindConVar("z_finale_spawn_mob_safety_range"), true, true);
-		ResetConVar(FindConVar("director_allow_infected_bots"), true, true);
+		ResetConVar(director_allow_infected_bots, true, true);
 	}
 	//ResetConVar(FindConVar("z_spawn_flow_limit"), true, true);
 	if(g_bTankHealthAdjust) ResetConVar(cvarZombieHP[6], true, true);
@@ -4529,7 +4644,7 @@ public void ShowInfectedHUD(int src)
 		{
 			if ( (GetClientTeam(i) == TEAM_INFECTED))
 			{
-				if(IsPlayerTank(i) && g_iCurrentMode != 2)
+				if(IsPlayerTank(i) && L4D_HasPlayerControlledZombies() == false)
 				{
 					int fus = 100 - GetFrustration(i);
 					if(fus <= 75)
@@ -4555,7 +4670,7 @@ public void ShowInfectedHUD(int src)
 	}
 
 	// If no bots are alive, no point in showing the HUD
-	// if (g_iCurrentMode == 2 && !BotsAlive())
+	// if (L4D_HasPlayerControlledZombies() && !BotsAlive())
 	// {
 	// 	return;
 	// }
@@ -4587,7 +4702,7 @@ public void ShowInfectedHUD(int src)
 	// Display information panel to infected clients
 	pInfHUD = new Panel(GetMenuStyleHandle(MenuStyle_Radio));
 	char information[32];
-	if (g_iCurrentMode == 2)
+	if (L4D_HasPlayerControlledZombies())
 		Format(information, sizeof(information), "INFECTED BOTS(%s):", PLUGIN_VERSION);
 	else
 		Format(information, sizeof(information), "INFECTED TEAM(%s):", PLUGIN_VERSION);
@@ -4663,7 +4778,7 @@ public void ShowInfectedHUD(int src)
 						// As a failsafe if they're dead/waiting set HP to 0
 						iHP = 0;
 					}
-					else if (respawnDelay[i] == 0 && g_iCurrentMode != 2)
+					else if (respawnDelay[i] == 0 && L4D_HasPlayerControlledZombies() == false)
 					{
 						Format(iStatus, sizeof(iStatus), "READY");
 						strcopy(iClass, sizeof(iClass), "");
@@ -4814,7 +4929,7 @@ public void evtInfectedDeath(Event event, const char[] name, bool dontBroadcast)
 		{
 			queueHUDUpdate(13);
 
-			if(!IsFakeClient(client) && g_iCurrentMode != 2)
+			if(!IsFakeClient(client) && L4D_HasPlayerControlledZombies() == false)
 			{
 				CleanUpStateAndMusic(client);
 			}
@@ -4852,7 +4967,7 @@ public void evtInfectedWaitSpawn(Event event, const char[] name, bool dontBroadc
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if (client && IsClientInGame(client))
 	{
-		if (g_iCurrentMode == 2 && !IsFakeClient(client))
+		if (L4D_HasPlayerControlledZombies() && !IsFakeClient(client))
 		{
 			respawnDelay[client] = event.GetInt("spawntime");
 		}
@@ -4867,13 +4982,13 @@ void CheatCommand(int client,  char[] command, char[] arguments = "")
 	SetCommandFlags(command, flags & ~FCVAR_CHEAT);
 	FakeClientCommand(client, "%s %s", command, arguments);
 	SetCommandFlags(command, flags);
-	SetUserFlagBits(client, userFlags);
+	if(IsClientInGame(client)) SetUserFlagBits(client, userFlags);
 }
 
 
 void TurnFlashlightOn(int client)
 {
-	if (g_iCurrentMode == 2) return;
+	if (L4D_HasPlayerControlledZombies()) return;
 	if (!IsClientInGame(client)) return;
 	if (GetClientTeam(client) != TEAM_INFECTED) return;
 	if (!IsPlayerAlive(client)) return;
@@ -4975,7 +5090,7 @@ int MakeLightDynamic(const float vOrigin[3], const float vAngles[3], int client)
 
 void SwitchToSurvivors(int client)
 {
-	if (g_iCurrentMode == 2) return;
+	if (L4D_HasPlayerControlledZombies()) return;
 	if (!IsClientInGame(client)) return;
 	if (GetClientTeam(client) == 2) return;
 	if (IsFakeClient(client)) return;
@@ -5008,8 +5123,13 @@ int CheckAliveSurvivorPlayers_InSV()
 {
 	int iPlayersInAliveSurvivors=0;
 	for (int i = 1; i < MaxClients+1; i++)
-		if(IsClientInGame(i)&&GetClientTeam(i) == TEAM_SURVIVORS && IsPlayerAlive(i))
-			iPlayersInAliveSurvivors++;
+	{
+		if (IsClientInGame(i) && GetClientTeam(i) == TEAM_SURVIVORS)
+		{
+			if(IsPlayerAlive(i)) iPlayersInAliveSurvivors++;
+			else if(g_bIncludingDeadPlayers && !IsPlayerAlive(i)) iPlayersInAliveSurvivors++;
+		}
+	}
 	return iPlayersInAliveSurvivors;
 }
 
@@ -5022,7 +5142,7 @@ bool CheckRealPlayers_InSV(int client = 0)
 	return false;
 }
 
-bool IsWitch(int entity)
+stock bool IsWitch(int entity)
 {
     if (entity > 0 && IsValidEntity(entity) && IsValidEdict(entity))
     {
@@ -5095,7 +5215,7 @@ public Action SpawnWitchAuto(Handle timer)
 	{
 		PrintToServer("[TS] Couldn't find a valid alive survivor to spawn witch at this moment.",ZOMBIESPAWN_Attempts);
 	}
-	else if (witches < h_WitchLimit.IntValue)
+	else if (witches < g_iWitchLimit)
 	{
 		if(L4D_GetRandomPZSpawnPosition(anyclient,7,ZOMBIESPAWN_Attempts,vecPos) == true)
 		{
@@ -5168,7 +5288,7 @@ int L4D_GetSurvivorVictim(int client)
 
 public void L4D_OnEnterGhostState(int client)
 {
-	if(g_iCurrentMode != 2)
+	if(L4D_HasPlayerControlledZombies() == false)
 	{
 		DeleteLight(client);
 		if(g_bCoopInfectedPlayerGhostState == true)
@@ -5214,7 +5334,7 @@ void ResetTimer()
 // prevent infecetd fall damage on coop
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
 {
-	if(g_iCurrentMode == 2 || victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || IsFakeClient(victim)) return Plugin_Continue;
+	if(L4D_HasPlayerControlledZombies() || victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || IsFakeClient(victim)) return Plugin_Continue;
 	if(attacker <= 0 || attacker > MaxClients || !IsClientInGame(attacker) ) return Plugin_Continue;
 
 	if(attacker == victim && GetClientTeam(attacker) == TEAM_INFECTED && !IsPlayerTank(attacker))
@@ -5239,7 +5359,7 @@ public void CreateSurvivorModelGlow(int client)
 	GetClientTeam(client) != TEAM_SURVIVORS ||
 	!IsPlayerAlive(client) ||
 	IsValidEntRef(g_iModelIndex[client]) == true ||
-	g_iCurrentMode == 2 ||
+	L4D_HasPlayerControlledZombies() ||
 	g_bJoinableTeams == false ||
 	bDisableSurvivorModelGlow == true ||
 	g_bMapStarted == false) return;
@@ -5783,7 +5903,8 @@ bool HasAccess(int client, char[] g_sAcclvl)
 		return false;
 
 	// check permissions
-	if ( GetUserFlagBits(client) & ReadFlagString(g_sAcclvl) )
+	int userFlags = GetUserFlagBits(client);
+	if ( (userFlags & ReadFlagString(g_sAcclvl)) || (userFlags & ADMFLAG_ROOT))
 	{
 		return true;
 	}
@@ -5798,47 +5919,35 @@ void GameStart()
 	{
 		if(g_bL4D2Version)
 		{
-			char GameName[16];
-			g_hCvarMPGameMode.GetString(GameName, sizeof(GameName));
-			if (strcmp(GameName, "mutation15", false) != 0)
-			{
-				SetConVarInt(FindConVar("survival_max_smokers"), 0);
-				SetConVarInt(FindConVar("survival_max_boomers"), 0);
-				SetConVarInt(FindConVar("survival_max_hunters"), 0);
-				SetConVarInt(FindConVar("survival_max_jockeys"), 0);
-				SetConVarInt(FindConVar("survival_max_spitters"), 0);
-				SetConVarInt(FindConVar("survival_max_chargers"), 0);
-				return;
-			}
+			SetConVarInt(FindConVar("survival_max_smokers"), 0);
+			SetConVarInt(FindConVar("survival_max_boomers"), 0);
+			SetConVarInt(FindConVar("survival_max_hunters"), 0);
+			SetConVarInt(FindConVar("survival_max_jockeys"), 0);
+			SetConVarInt(FindConVar("survival_max_spitters"), 0);
+			SetConVarInt(FindConVar("survival_max_chargers"), 0);
+			SetConVarInt(FindConVar("survival_max_specials"), 0);
 		}
 		else
 		{
 			SetConVarInt(FindConVar("holdout_max_smokers"), 0);
 			SetConVarInt(FindConVar("holdout_max_boomers"), 0);
 			SetConVarInt(FindConVar("holdout_max_hunters"), 0);
+			SetConVarInt(FindConVar("holdout_max_specials"), 0);
 		}
 	}
 
 	GetSpawnDisConvars();
-
-	// We reset some settings
-	canSpawnBoomer = true;
-	canSpawnSmoker = true;
-	canSpawnHunter = true;
-	if (g_bL4D2Version)
-	{
-		canSpawnSpitter = true;
-		canSpawnJockey = true;
-		canSpawnCharger = true;
-	}
 
 	// We check if we need to spawn bots
 	CheckIfBotsNeeded(2);
 	#if DEBUG
 	LogMessage("Checking to see if we need bots");
 	#endif
-	delete hSpawnWitchTimer;
-	hSpawnWitchTimer = CreateTimer(float(GetRandomInt(g_iWitchPeriodMin, g_iWitchPeriodMax)), SpawnWitchAuto);
+	if(g_iCurrentMode != 3)
+	{
+		delete hSpawnWitchTimer;
+		hSpawnWitchTimer = CreateTimer(float(GetRandomInt(g_iWitchPeriodMin, g_iWitchPeriodMax)), SpawnWitchAuto);
+	}
 }
 
 // The type of idle mode to check for.
@@ -6090,4 +6199,131 @@ void CleanUpStateAndMusic(int client)
 		}
 	}
 }
+
+
+int GenerateIndex()
+{
+	int TotalSpawnWeight, StandardizedSpawnWeight;
+	
+	//temporary spawn weights factoring in SI spawn limits
+	int[] TempSpawnWeights = new int[NUM_INFECTED];
+	float[] IntervalEnds = new float[NUM_INFECTED];
+	for(int i = 0; i < NUM_INFECTED; i++)
+	{
+		if(g_iSpawnCounts[i] < g_iSpawnLimits[i])
+		{
+			if(g_bScaleWeights)
+				TempSpawnWeights[i] = (g_iSpawnLimits[i] - g_iSpawnCounts[i]) * g_iSpawnWeights[i];
+			else
+				TempSpawnWeights[i] = g_iSpawnWeights[i];
+		}
+		else
+		{
+			TempSpawnWeights[i] = 0;
+		}
+		
+		TotalSpawnWeight += TempSpawnWeights[i];
+	}
+	
+	//calculate end intervals for each spawn
+	float unit = 1.0/TotalSpawnWeight;
+	for (int i = 0; i < NUM_INFECTED; i++)
+	{
+		if (TempSpawnWeights[i] >= 0)
+		{
+			StandardizedSpawnWeight += TempSpawnWeights[i];
+			IntervalEnds[i] = StandardizedSpawnWeight * unit;
+		}
+	}
+	
+	float r = GetRandomFloat(0.0, 1.0); //selector r must be within the ith interval for i to be selected
+	for (int i = 0; i < NUM_INFECTED; i++)
+	{
+		//negative and 0 weights are ignored
+		if (TempSpawnWeights[i] <= 0) continue;
+		//r is not within the ith interval
+		if (IntervalEnds[i] < r) continue;
+		//selected index i because r is within ith interval
+		return i;
+	}
+
+	return -1; //no selection because all weights were negative or 0
+}
+
 ///////////////////////////////////////////////////////////////////////////
+
+public Action L4D_OnGetScriptValueInt(const char[] sKey, int &retVal)
+{
+	if (strcmp(sKey, "BoomerLimit", false) == 0) {
+
+		retVal = g_iSpawnLimits[SI_BOOMER];
+		//PrintToServer("BoomerLimit %d", retVal);
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "SmokerLimit", false) == 0) {
+
+		retVal = g_iSpawnLimits[SI_SMOKER];
+		//PrintToServer("SmokerLimit %d", retVal);
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "HunterLimit", false) == 0) {
+
+		retVal = g_iSpawnLimits[SI_HUNTER];
+		//PrintToServer("HunterLimit %d", retVal);
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "SpitterLimit", false) == 0) {
+
+		retVal = g_iSpawnLimits[SI_SPITTER];
+		//PrintToServer("SpitterLimit %d", retVal);
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "JockeyLimit", false) == 0) {
+
+		retVal = g_iSpawnLimits[SI_JOCKEY];
+		//PrintToServer("JockeyLimit %d", retVal);
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "ChargerLimit", false) == 0) {
+
+		retVal = g_iSpawnLimits[SI_CHARGER];
+		//PrintToServer("ChargerLimit %d", retVal);
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "MaxSpecials", false) == 0 || strcmp(sKey, "cm_MaxSpecials", false) == 0 || strcmp(sKey, "cm_BaseSpecialLimit", false) == 0) {
+
+		retVal = g_iMaxPlayerZombies;
+		//PrintToServer("MaxSpecials %d", retVal);
+
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "DominatorLimit", false) == 0 || strcmp(sKey, "cm_DominatorLimit", false) == 0) { // Maximum number of Hunters, Smokers, Jockeys and Chargers allowed to be in play simultaneously.
+
+		retVal = g_iMaxPlayerZombies;
+		//PrintToServer("DominatorLimit %d", retVal);
+
+		return Plugin_Handled;
+	}
+	else if(strcmp(sKey, "CommonLimit", false) == 0 || strcmp(sKey, "cm_CommonLimit", false) == 0) {
+
+		retVal = g_iCvar_z_common_limit;
+		//PrintToServer("CommonLimit %d", retVal);
+
+		return Plugin_Handled;
+	}
+
+	return Plugin_Continue;
+}
+
+public Action L4D_OnGetScriptValueFloat(const char[] sKey, float &retVal)
+{
+	if(strcmp(sKey, "SpecialRespawnInterval", false) == 0 || strcmp(sKey, "cm_SpecialRespawnInterval", false) == 0) {
+
+		retVal = 999999.9;
+		//PrintToServer("L4D_OnGetScriptValueFloat SpecialRespawnInterval %.1f", retVal);
+
+		return Plugin_Handled;
+	}
+
+	return Plugin_Continue;
+}

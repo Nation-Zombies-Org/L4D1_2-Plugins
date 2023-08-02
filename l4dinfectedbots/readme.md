@@ -1,66 +1,19 @@
 # Description | 內容
-Spawns infected bots in L4D1 versus, and gives greater control of the infected bots in L4D1/L4D2 without being limited by the director.
+Spawns multi infected bots in versus + allows playable special infected in coop/survival + unlock infected slots (10 VS 10 available)
 
 * Video | 影片展示
 <br>None
 
 * Image | 圖示
-	* Spawn many Special Infected on the field.
-		> 在場上生成多特感
-		<br/>![l4dinfectedbots_1](image/l4dinfectedbots_1.jpg)
-	* Message
-		> 存活的倖存者數量改變時顯示訊息
-		<br/>![l4dinfectedbots_2](image/l4dinfectedbots_2.jpg)
+	<br/>![l4dinfectedbots_1](image/l4dinfectedbots_1.jpg)
+	<br/>![l4dinfectedbots_2](image/l4dinfectedbots_2.jpg)
 	* Join infected team and play in coop/survival/realism mode.
 		> 在戰役/寫實/生存模式下加入特感陣營
 		<br/>![l4dinfectedbots_3](image/l4dinfectedbots_3.jpg)
 
-* Apply to | 適用於
-	```
-	L4D1 Coop/Survival/Versus
-	L4D2 Coop/Survival/Versus/Realism
-	```
-
-* Translation Support | 支援翻譯
-	```
-	English
-	繁體中文
-	简体中文
-	Russian
-	```
-
-* <details><summary>Changelog | 版本日誌</summary>
-
-	* v2.7.8
-		* [AlliedModder Post](https://forums.alliedmods.net/showpost.php?p=2699220&postcount=1369)
-		* ProdigySim's method for indirectly getting signatures added, created the whole code for indirectly getting signatures so the plugin can now withstand most updates to L4D2! (Thanks to [Shadowysn](https://forums.alliedmods.net/showthread.php?t=320849) and [ProdigySim](https://github.com/ProdigySim/DirectInfectedSpawn)
-		* L4D1 Signature update. Credit to [Psykotikism](https://github.com/Psykotikism/L4D1-2_Signatures).
-		* Remake Code
-		* Add translation support.
-		* Update L4D2 "The Last Stand" gamedata, credit to [Lux](https://forums.alliedmods.net/showthread.php?p=2714236), [Shadowysn](https://forums.alliedmods.net/showthread.php?t=320849) and [Machine](https://forums.alliedmods.net/member.php?u=74752)
-		* Spawn infected without being limited by the director.
-		* Join infected team in coop/survival/realism mode.
-		* Light up SI ladders in coop/realism/survival. mode for human infected players. (l4d2 only, didn't work if you host a listen server)
-		* Add convars to turn off this plugin.
-		* Fixed Hunter Tank Bug in l4d1 coop mode when tank is playable.
-		* If you want to fix Camera stuck in coop/versus/realism, install [this plugin by Forgetest](https://github.com/Target5150/MoYu_Server_Stupid_Plugins/tree/master/The%20Last%20Stand/l4d_fix_deathfall_cam)
-		* Fixed Music Bugs when switching to infected team in coop/realism/survival.
-
-	* v1.0.0
-		* [Original Plugin By mi123645](https://forums.alliedmods.net/showthread.php?t=99746)
-</details>
-
-* Require
+* Require | 必要安裝
 	1. [left4dhooks](https://forums.alliedmods.net/showthread.php?t=321696)
 	2. [[INC] Multi Colors](https://github.com/fbef0102/L4D1_2-Plugins/releases/tag/Multi-Colors)
-
-* Related Plugin | 相關插件
-	1. [MultiSlots](https://github.com/fbef0102/L4D1_2-Plugins/tree/master/l4dmultislots): Allows additional survivor players in coop/survival/realism when 5+ player joins the server
-		> 創造5位以上倖存者遊玩伺服器
-	2. [Zombie Spawn Fix](https://forums.alliedmods.net/showthread.php?t=333351): To Fixed Special Inected and Player Zombie spawning failures in some cases
-		> 修正某些時候遊戲導演刻意停止特感生成的問題 (非100%完整解決特感不生成的問題)
-	3. [l4d_ssi_teleport_fix](https://github.com/fbef0102/Game-Private_Plugin/tree/main/Plugin_%E6%8F%92%E4%BB%B6/Special_Infected_%E7%89%B9%E6%84%9F/l4d_ssi_teleport_fix): Teleport AI Infected player (Not Tank) to the teammate who is much nearer to survivors.
-		> 傳送比較遠的AI特感到靠近倖存者的特感隊友附近
 
 * <details><summary>ConVar | 指令</summary>
 
@@ -96,7 +49,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// Reduce certain value to maximum spawn timer based per alive player
 		l4d_infectedbots_adjust_reduced_spawn_times_on_player "1"
 
-		// If 1, The plugin will adjust spawn timers depending on the gamemode
+		// If 1, The plugin will adjust spawn timers depending on the gamemode and human players on infected team
 		l4d_infectedbots_adjust_spawn_times "1"
 
 		// If 1, adjust and overrides tank health by this plugin.
@@ -109,10 +62,19 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		l4d_infectedbots_announcement_enable "1"
 
 		// Sets the limit for boomers spawned by the plugin
-		l4d_infectedbots_boomer_limit "2"
+		l4d_infectedbots_boomer_limit "100"
+
+		// The weight for a boomer spawning [0-100]
+		l4d_infectedbots_boomer_weight "100"
+
+		// If 1, including 4+ alive and dead players in the server.
+		l4d_infectedbots_calculate_including_dead_player "0"
 
 		// Sets the limit for chargers spawned by the plugin
 		l4d_infectedbots_charger_limit "2"
+
+		// The weight for a charger spawning [0-100]
+		l4d_infectedbots_charger_weight "100"
 
 		// If 1, players can join the infected team in coop/survival/realism (!ji in chat to join infected, !js to join survivors)
 		l4d_infectedbots_coop_versus "1"
@@ -144,8 +106,14 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// Sets Default Health for Tank, Tank hp is affected by gamemode and difficulty (Example, Set Tank health 4000hp, but in Easy: 3000, Normal: 4000, Versus: 6000, Advanced/Expert: 8000)
 		l4d_infectedbots_default_tankhealth "4000"
 
+		// If 1, disable infected bots spawning in versus/scavenge mode. (Does not disable witch spawn and does not affect director boss spawn)
+		l4d_infectedbots_disable_infected_bots "0"
+
 		// Sets the limit for hunters spawned by the plugin
 		l4d_infectedbots_hunter_limit "2"
+
+		// The weight for a hunter spawning [0-100]
+		l4d_infectedbots_hunter_weight "100"
 
 		// Toggle whether Infected HUD announces itself to clients.
 		l4d_infectedbots_infhud_announce "1"
@@ -158,6 +126,9 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 		// Sets the limit for jockeys spawned by the plugin
 		l4d_infectedbots_jockey_limit "2"
+
+		// The weight for a jockey spawning [0-100]
+		l4d_infectedbots_jockey_weight "100"
 
 		// Amount of seconds before a special infected bot is kicked
 		l4d_infectedbots_lifespan "30"
@@ -177,11 +148,17 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// If 1, spawn special infected before survivors leave starting safe room area.
 		l4d_infectedbots_safe_spawn "0"
 
+		// If 1, Scale spawn weights with the limits of corresponding SI
+		l4d_infectedbots_scale_weights "0"
+
 		// Disable sm_zs in these gamemode (0: None, 1: coop/realism, 2: versus/scavenge, 4: survival, add numbers together)
 		l4d_infectedbots_sm_zs_disable_gamemode "6"
 
 		// Sets the limit for smokers spawned by the plugin
 		l4d_infectedbots_smoker_limit "2"
+
+		// The weight for a smoker spawning [0-100]
+		l4d_infectedbots_smoker_weight "100"
 
 		// If 1, infected bots can spawn on the same game frame (careful, this could cause sever laggy)
 		l4d_infectedbots_spawn_on_same_frame "0"
@@ -204,6 +181,9 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 		// Sets the limit for spitters spawned by the plugin
 		l4d_infectedbots_spitter_limit "2"
+
+		// The weight for a spitter spawning [0-100]
+		l4d_infectedbots_spitter_weight "100"
 
 		// Sets the limit for tanks spawned by the plugin (does not affect director tanks)
 		l4d_infectedbots_tank_limit "1"
@@ -268,7 +248,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 </details>
 
 * How to set the correct Convar ?
-	1. <details><summary>Set special limit</summary>
+	1. <details><summary>Set Max Special Limit</summary>
 
 		```php
 		l4d_infectedbots_charger_limit
@@ -277,10 +257,9 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		l4d_infectedbots_jockey_limit
 		l4d_infectedbots_smoker_limit
 		l4d_infectedbots_spitter_limit
-		l4d_infectedbots_tank_limit
 		```
 
-		These 7 values combined together must equal or exceed ```l4d_infectedbots_max_specials```
+		These 6 values combined together must equal or exceed ```l4d_infectedbots_max_specials```
 		* For example
 			```php
 			// Good
@@ -290,7 +269,6 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			l4d_infectedbots_jockey_limit 1
 			l4d_infectedbots_smoker_limit 1
 			l4d_infectedbots_spitter_limit 1
-			l4d_infectedbots_tank_limit  0
 			l4d_infectedbots_max_specials 6 
 			```
 
@@ -298,11 +276,10 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			// Also Good
 			l4d_infectedbots_charger_limit 1
 			l4d_infectedbots_boomer_limit 2
-			l4d_infectedbots_hunter_limit 3
+			l4d_infectedbots_hunter_limit 4
 			l4d_infectedbots_jockey_limit 2
 			l4d_infectedbots_smoker_limit 2
 			l4d_infectedbots_spitter_limit 2
-			l4d_infectedbots_tank_limit  1
 			l4d_infectedbots_max_specials 10 
 			```
 
@@ -314,11 +291,10 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			l4d_infectedbots_jockey_limit 0
 			l4d_infectedbots_smoker_limit 1
 			l4d_infectedbots_spitter_limit 0
-			l4d_infectedbots_tank_limit  0
 			l4d_infectedbots_max_specials 9 
 			```
 
-		> __Note__ Note that it does not counts witch in all gamemode, but it counts tank in all gamemode.
+		> __Note__ Max Special Limit does not count witch, but it counts tank in all gamemode.
 	</details>
 
 	2. <details><summary>Adjust special limit if 5+ alive players</summary>
@@ -374,7 +350,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 	5. <details><summary>Adjust special infected spawn timer</summary>
 
 		* Reduce certain value to spawn timer based per alive player.
-		<br/>If there are 5 **ALIVE** survivors in game, special infected spawn timer [max: 60-(5*2) = 50, min: 30-(5*2) = 20]
+		<br/>If there are 5 **ALIVE** survivors in game, special infected spawn timer [max: 60-(5x2) = 50, min: 30-(5x2) = 20]
 			```php
 			l4d_infectedbots_spawn_time_max "60"
 			l4d_infectedbots_spawn_time_min "30"
@@ -382,7 +358,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			l4d_infectedbots_adjust_reduced_spawn_times_on_player "2"
 			```
 
-		* To close this feature, do not want to overrides zombie common limit by this plugin, set
+		* To close this feature, do not want to overrides special infected limit by this plugin, set
 			```php
 			l4d_infectedbots_adjust_spawn_times "0"
 			```
@@ -405,6 +381,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 	7. <details><summary>Adjust Tank limit if 5+ alive players</summary>
 
+		* Tank limit = The number of tanks on the field at the same time
 		* This means that if server has 5+ alive survivors, each 5 players join, Tank limit plus 1
 		<br/>So if there are 10 alive survivors, tank limit: 2+1 = 3 (Does not affect director tanks)
 			```php
@@ -470,6 +447,28 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			```
 	</details>
 
+	11. <details><summary>Set Weight of Special Infected</summary>
+
+		* Increase chance to spawn specific special infected except for tank and witch, For example
+			```php
+			// Most of time, spawn hunter and charger on the field
+			// If hunter limit reached and charger limit reached, spawn other infected
+			l4d_infectedbots_boomer_weight "5"
+			l4d_infectedbots_charger_weight "90"
+			l4d_infectedbots_hunter_weight "100"
+			l4d_infectedbots_jockey_weight "10"
+			l4d_infectedbots_smoker_weight "5"
+			l4d_infectedbots_spitter_weight "8"
+			```
+
+		* Scale spawn weights with the limits of corresponding SI
+			```php
+			// If 1, The weight of infected would be increased if limit is greater than others
+			// If 1, The weight of infected would be decreased if there are same type of infecteds on the field
+			l4d_infectedbots_scale_weights "1" 
+			```
+	</details>
+
 * Q&A
 	1. <details><summary>How to disable this message?</summary>
 
@@ -491,26 +490,119 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 		Special Infected can't spawn sometimes, and server console spamming message
 		<br/><img width="406" alt="image" src="https://user-images.githubusercontent.com/12229810/209465301-a816bd24-44d7-4e48-93ac-872857115631.png">
-		* Reason: It means that the game can not find a position to spawn speical infected, usually happen when director stops spawning speical infected (C1m4 before evelator) or NAV problem (can't find any valid nav area to spawn infected near survivors)
+		* Reason: It means that the game can not find a position to spawn special infected, usually happen when director stops spawning special infected (C1m4 before evelator) or NAV problem (can't find any valid nav area to spawn infected near survivors)
 
 		* I can't do anything about the nav pathfinding, only Valve or map authors can handle nav problem.
 		* Recommand to install [Zombie Spawn Fix](https://forums.alliedmods.net/showthread.php?t=333351)
 	</details>
 
+	4. <details><summary>Count 5+ players including dead</summary>
+
+		* Adjust special limit, tank health, zombie zommon, Tank limit according to 5+ alive and dead survivor players
+			```php
+			l4d_infectedbots_calculate_including_dead_player "1"
+			```
+	</details>
+
+	5. <details><summary>How to control Human Infected spawn time in versus/scavenge mode?</summary>
+
+		* Modfiy Offical Convar, you can write down the following in cfg/server.cfg
+			```php
+			sm_cvar z_ghost_delay_min "20"
+			sm_cvar z_ghost_delay_max "30"
+			```
+
+	6. <details><summary>Disable infected bots spawning in versus/scavenge mode.</summary>
+
+		* Only allow real infected players to spawn on the field in versus/scavenge mode.
+			```php
+			l4d_infectedbots_disable_infected_bots "1"
+			```
+	</details>
+
 * Known Issue
-	* In coop/realism mode, the infected/spectator players' screen would be stuck and frozen when they are watching survivor deathfall or final rescue mission failed. Install [l4d_fix_deathfall_cam](https://github.com/Target5150/MoYu_Server_Stupid_Plugins/tree/master/The%20Last%20Stand/l4d_fix_deathfall_cam) by Forgetest to fix Camera stuck.
+	* In coop/realism mode, the infected/spectator players' screen would be stuck and frozen when they are watching survivor deathfall or final rescue mission failed. Install [l4d_fix_deathfall_cam](https://github.com/Target5150/MoYu_Server_Stupid_Plugins/tree/master/The%20Last%20Stand/l4d_fix_deathfall_cam)
+
+* Apply to | 適用於
+	```
+	L4D1 coop/versus/realism/survival/scavenge + all mutation modes
+	L4D2 all modes
+	```
+
+* Translation Support | 支援翻譯
+	```
+	English
+	繁體中文
+	简体中文
+	Russian
+	```
+
+* Related Plugin | 相關插件
+	1. [MultiSlots](https://github.com/fbef0102/L4D1_2-Plugins/tree/master/l4dmultislots): Allows additional survivor players in server when 5+ player joins the server
+		> 創造5位以上倖存者遊玩伺服器
+	2. [AI_HardSI](https://github.com/fbef0102/L4D2-Plugins/tree/master/AI_HardSI): Improves the AI behaviour of special infected
+		> 強化每個AI 特感的行為與提高智商，積極攻擊倖存者
+	3. [Zombie Spawn Fix](https://forums.alliedmods.net/showthread.php?t=333351): To Fixed Special Inected and Player Zombie spawning failures in some cases
+		> 修正某些時候遊戲導演刻意停止特感生成的問題 (非100%完整解決特感不生成的問題)
+	4. [l4d_ssi_teleport_fix](https://github.com/fbef0102/Game-Private_Plugin/tree/main/Plugin_%E6%8F%92%E4%BB%B6/Special_Infected_%E7%89%B9%E6%84%9F/l4d_ssi_teleport_fix): Teleport AI Infected player (Not Tank) to the teammate who is much nearer to survivors.
+		> 傳送比較遠的AI特感到靠近倖存者的特感隊友附近
+
+* <details><summary>Changelog | 版本日誌</summary>
+
+	```php
+	//mi123645 @ 2009-2011
+	//HarryPotter @ 2019-2023
+	```
+	* v2.8.3 (2023-7-5)
+		* Override L4D2 Vscripts to control infected limit.
+
+	* v2.8.2 (2023-5-27)
+		* Add a convar, including dead survivors or not
+		* Add a convar, disable infected bots spawning or not in versus/scavenge mode
+
+	* v2.8.1 (2023-5-22)
+		* Support l4d2 all mutation mode.
+
+	* v2.8.0 (2023-5-5)
+		* Add Special Infected Weight
+		* Add and modify convars about Special Infected Weight
+
+	* v2.7.9 (2023-4-13)
+		* Fixed Not Working in Survival Mode
+		* Fixed cvar "l4d_infectedbots_adjust_spawn_times" calculation mistake
+
+	* v2.7.8 (2023-2-20)
+		* [AlliedModder Post](https://forums.alliedmods.net/showpost.php?p=2699220&postcount=1369)
+		* ProdigySim's method for indirectly getting signatures added, created the whole code for indirectly getting signatures so the plugin can now withstand most updates to L4D2! (Thanks to [Shadowysn](https://forums.alliedmods.net/showthread.php?t=320849) and [ProdigySim](https://github.com/ProdigySim/DirectInfectedSpawn)
+		* L4D1 Signature update. Credit to [Psykotikism](https://github.com/Psykotikism/L4D1-2_Signatures).
+		* Remake Code
+		* Add translation support.
+		* Update L4D2 "The Last Stand" gamedata, credit to [Lux](https://forums.alliedmods.net/showthread.php?p=2714236), [Shadowysn](https://forums.alliedmods.net/showthread.php?t=320849) and [Machine](https://forums.alliedmods.net/member.php?u=74752)
+		* Spawn infected without being limited by the director.
+		* Join infected team in coop/survival/realism mode.
+		* Light up SI ladders in coop/realism/survival. mode for human infected players. (l4d2 only, didn't work if you host a listen server)
+		* Add convars to turn off this plugin.
+		* Fixed Hunter Tank Bug in l4d1 coop mode when tank is playable.
+		* If you want to fix Camera stuck in coop/versus/realism, install [this plugin by Forgetest](https://github.com/Target5150/MoYu_Server_Stupid_Plugins/tree/master/The%20Last%20Stand/l4d_fix_deathfall_cam)
+		* Fixed Music Bugs when switching to infected team in coop/realism/survival.
+
+	* v1.0.0
+		* [Original Plugin By mi123645](https://forums.alliedmods.net/showthread.php?t=99746)
+</details>
 
 - - - -
 # 中文說明
-多特感生成插件，倖存者人數越多，生成的特感越多，且不受遊戲特感數量限制
+多特感生成插件，倖存者人數越多，生成的特感越多，且不受遊戲特感數量限制 + 解除特感隊伍的人數限制 (可達成對抗 10 VS 10 玩法)
 
 * 原理
-	* 此插件控制遊戲導演生成系統，用於控制遊戲生成多特感，提升遊戲難度
-	* 當倖存者變多時，殭屍數量變多、特感數量變多、Tank數量變多、Tank血量變多
+	* 此插件控制遊戲導演生成系統，能夠強制無視遊戲特感數量限制，生成多特感
+	* 當倖存者變多時，殭屍數量變多、特感數量變多、Tank數量變多、Tank血量變多，提升遊戲難度
 	* 此插件可以讓玩家在戰役/寫實/生存模式下加入特感陣營，用來惡搞戰役玩家XD
+	* 解鎖特感隊伍的人數上限，可以加入第五位以上的特感真人玩家，達成對抗 10 VS 10 玩法
+	* **支援所有模式包括突變模式**
 
 * 功能
-	1. 見下方指令中文介紹與如何設置正確的指令值
+	* 見下方指令中文介紹與如何設置正確的指令值
 
 * <details><summary>指令中文介紹 (點我展開)</summary>
 
@@ -546,7 +638,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// 每增加一位倖存者，則減少(存活的倖存者數量-l4d_infectedbots_adjust_reduced_spawn_times_on_player)復活時間（初始4位倖存者也算在內）
 		l4d_infectedbots_adjust_reduced_spawn_times_on_player "1"
 
-		// 如果爲1，則根據倖存者數量調整特感復活時間
+		// 如果爲1，則根據倖存者數量與特感隊伍的真人玩家數量調整特感復活時間
 		l4d_infectedbots_adjust_spawn_times "1"
 
 		// 如果爲1，則根據倖存者數量修改Tank血量上限
@@ -561,8 +653,17 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// 插件可生成boomer的最大數量
 		l4d_infectedbots_boomer_limit "2"
 
+		// 插件生成boomer的權重值 [0~100]
+		l4d_infectedbots_boomer_weight "100"
+
+		// 為1，計算4+以上的倖存者時也包含死亡的倖存者
+		l4d_infectedbots_calculate_including_dead_player "0"
+
 		// 插件可生成charger的最大數量
 		l4d_infectedbots_charger_limit "2"
+
+		// 插件生成charger的權重值 [0~100]
+		l4d_infectedbots_charger_weight "100"
 
 		// 如果爲1，則玩家可以在戰役/寫實/生存模式中加入感染者(!ji加入感染者 !js加入倖存者)"
 		l4d_infectedbots_coop_versus "1"
@@ -593,9 +694,16 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 		// 設置Tank默認血量上限, Tank血量上限受到遊戲難度或模式影響 （若Tank血量上限設置爲4000，則簡單難度3000血，普通難度4000血，對抗類型模式6000血，高級/專家難度血量8000血）
 		l4d_infectedbots_default_tankhealth "4000"
+		
+		// 為1，對抗/清道夫模式下關閉特感bots生成，只允許真人特感玩家生成
+		// (此插件會繼續生成Witch、不影響導演系統)
+		l4d_infectedbots_disable_infected_bots "0"
 
 		// 插件可生成hunter的最大數量
 		l4d_infectedbots_hunter_limit "2"
+
+		// 插件生成hunter的權重值 [0~100]
+		l4d_infectedbots_hunter_weight "100"
 
 		// 是否提示感染者玩家如何開啓HUD
 		l4d_infectedbots_infhud_announce "1"
@@ -609,10 +717,13 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// 插件可生成jockey的最大數量
 		l4d_infectedbots_jockey_limit "2"
 
+		// 插件生成jockey的權重值 [0~100]
+		l4d_infectedbots_jockey_weight "100"
+
 		// AI特感生成多少秒後踢出（AI防卡）
 		l4d_infectedbots_lifespan "30"
 
-		// 當倖存者數量低于4個及以下時可生成的最大特感數量（必須讓7個特感數量{不包括witch}上限的值加起來超過這個值
+		// 當倖存者數量低于4個及以下時可生成的最大特感數量（必須讓6個特感數量[Smoker, Boomer, Hunter, Spitter, Jockey, Charger]上限的值加起來超過這個值)
 		l4d_infectedbots_max_specials "2"
 
 		// 在這些模式中啓用插件，逗號隔開不需要空格（全空=全模式啓用插件）
@@ -627,11 +738,18 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		// 如果爲1，即使倖存者尚未離開安全區域，遊戲依然能生成特感
 		l4d_infectedbots_safe_spawn "0"
 
+		// 如果爲1，可生成的最大數量越多，該特感的權重值越高
+		// 如果爲1，場上相同特感種類的數量越多，該特感的權重值越低
+		l4d_infectedbots_scale_weights "0"
+
 		// 在哪些遊戲模式中禁止感染者玩家使用sm_zs (0: 無, 1: 戰役/寫實, 2: 對抗/清道夫, 4: 倖存者, 多個模式添加數字輸出)
 		l4d_infectedbots_sm_zs_disable_gamemode "6"
 
 		// 插件可生成smoker的最大數量
 		l4d_infectedbots_smoker_limit "2"
+
+		// 插件生成smoker的權重值 [0~100]
+		l4d_infectedbots_smoker_weight "5"
 
 		// 允許特感在同一個時間點復活沒有誤差 (小心啟動，會影響伺服器卡頓)
 		l4d_infectedbots_spawn_on_same_frame 0
@@ -654,6 +772,9 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 		// 插件可生成spitter的最大數量
 		l4d_infectedbots_spitter_limit "2"
+
+		// 插件生成spitter的權重值 [0~100]
+		l4d_infectedbots_spitter_weight "100"
 
 		// 插件可生成tank的最大數量 （不影響劇情tank）
 		l4d_infectedbots_tank_limit "1"
@@ -718,7 +839,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 </details>
 
 * 如何設置正確的指令值?
-	1. <details><summary>設置特感生成</summary>
+	1. <details><summary>設置特感生成最大數量限制</summary>
 
 		```php
 		l4d_infectedbots_charger_limit
@@ -727,10 +848,9 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 		l4d_infectedbots_jockey_limit
 		l4d_infectedbots_smoker_limit
 		l4d_infectedbots_spitter_limit
-		l4d_infectedbots_tank_limit
 		```
 
-		這7個cvar值加在一起必須等於或超過 ```l4d_infectedbots_max_specials```
+		這6個cvar值加在一起必須等於或超過 ```l4d_infectedbots_max_specials```
 		* For example
 			```php
 			// 好的
@@ -740,7 +860,6 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			l4d_infectedbots_jockey_limit 1
 			l4d_infectedbots_smoker_limit 1
 			l4d_infectedbots_spitter_limit 1
-			l4d_infectedbots_tank_limit  0
 			l4d_infectedbots_max_specials 6 
 			```
 
@@ -748,11 +867,10 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			// 好的
 			l4d_infectedbots_charger_limit 1
 			l4d_infectedbots_boomer_limit 2
-			l4d_infectedbots_hunter_limit 3
+			l4d_infectedbots_hunter_limit 4
 			l4d_infectedbots_jockey_limit 2
 			l4d_infectedbots_smoker_limit 2
 			l4d_infectedbots_spitter_limit 2
-			l4d_infectedbots_tank_limit  1
 			l4d_infectedbots_max_specials 10 
 			```
 
@@ -764,16 +882,15 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			l4d_infectedbots_jockey_limit 0
 			l4d_infectedbots_smoker_limit 1
 			l4d_infectedbots_spitter_limit 0
-			l4d_infectedbots_tank_limit  0
 			l4d_infectedbots_max_specials 9 
 			```
 
-		> __Note__ 請注意，插件在所有遊戲模式中都不會計算witch的數量，但在所有遊戲模式中都會計算tank的數量
+		> __Note__ 請注意，最大數量限制不包含witch的數量，但會包含tank的數量
 	</details>
 
 	2. <details><summary>如果第5位以上存活的倖存者，則調整特感最大生成數量</summary>
 
-		* 例如: 如果第5位以上存活的倖存者，每3個玩家加入，最大的特殊限制加2
+		* 例如: 如果第5位以上存活的倖存者，每3個玩家加入，最大的特感數量加2
 		<br/>因此，如果有10個存活的倖存者，則特感最大生成數量爲：4+2+2=8
 			```php
 			l4d_infectedbots_max_specials "4"
@@ -824,7 +941,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 	5. <details><summary>調整特感生成時間</summary>
 
 		* 根據每個存活的倖存者，減少一定數值的特感生成時間
-		<br/>如果有5個存活的倖存者，則特感生成時間爲：[最長時間: 60-(5*2) = 50, 最短時間: 30-(5*2) = 20]
+		<br/>如果有5個存活的倖存者，則特感生成時間爲：[最長時間: 60-(5x2) = 50, 最短時間: 30-(5x2) = 20]
 			```php
 			l4d_infectedbots_spawn_time_max "60"
 			l4d_infectedbots_spawn_time_min "30"
@@ -855,6 +972,7 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 
 	7. <details><summary>如果第5位以上存活的倖存者，則調整tank生成限制</summary>
 
+		* Tank上限 = 場上同時存在Tank的數量
 		* 這意味著如果有第5位以上存活的倖存者，每5個玩家加入，tank可生成上限數量加1
 		<br/>因此，如果有10個存活的倖存者，tank可生成上限數量爲: 2+1=3 (不影響遊戲生成的Tank)
 			```php
@@ -920,6 +1038,28 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			```
 	</details>
 
+	11. <details><summary>設置特感的權重</summary>
+
+		* 除了Tank與Witch以外可以增減特感的權重, 譬如
+			```php
+			// 每一次特感生成, 有很大的機率生成Hunter與Charger
+			// 如果Hunter與Charger達到最大數量限制, 則根據權重分配生成其他特感
+			l4d_infectedbots_boomer_weight "5"
+			l4d_infectedbots_charger_weight "90"
+			l4d_infectedbots_hunter_weight "100"
+			l4d_infectedbots_jockey_weight "10"
+			l4d_infectedbots_smoker_weight "5"
+			l4d_infectedbots_spitter_weight "8"
+			```
+
+		* 可根據"場上特感數量"與"生成最大數量"兩種值調整每個特感的權重 (公式如何計算，不要問)
+			```php
+			// 如果爲1，可生成的最大數量越多，該特感的權重值越高
+			// 如果爲1，場上相同特感種類的數量越多，該特感的權重值越低
+			l4d_infectedbots_scale_weights "1"
+			```
+	</details>
+
 * Q&A問題
 	1. <details><summary>如何關閉這個消息?</summary>
 
@@ -965,5 +1105,29 @@ Spawns infected bots in L4D1 versus, and gives greater control of the infected b
 			* 解決方式：```sm_cvar director_no_specials 0```
 	</details>
 
+	4. <details><summary>計算第5位以上死亡的倖存者</summary>
+
+		* 調整特感最大生成數量、Tank血量、普通殭屍最大數量、tank生成限制時，計算倖存者數量時也包含死亡的玩家
+			```php
+			l4d_infectedbots_calculate_including_dead_player "1"
+			```
+	</details>
+
+	5. <details><summary>(對抗/清道夫)如何控制真人特感玩家的復活時間?</summary>
+
+		* 修改官方指令，將下列指令寫入 cfg/server.cfg
+			```php
+			sm_cvar z_ghost_delay_min "20"
+			sm_cvar z_ghost_delay_max "30"
+			```
+
+	6. <details><summary>停止特感Bots生成</summary>
+
+		* 在對抗/清道夫模式中，關閉特感bots生成，只允許真人特感玩家生成特感 (此插件會繼續生成Witch、不影響導演系統)
+			```php
+			l4d_infectedbots_disable_infected_bots "1"
+			```
+	</details>
+
 * 已知問題
-	* 在戰役/寫實/生存下，特感玩家的視角畫面會卡住，常發生在倖存者滅團重新回合的時候，如果要修正請安裝[l4d_fix_deathfall_cam](https://github.com/Target5150/MoYu_Server_Stupid_Plugins/tree/master/The%20Last%20Stand/l4d_fix_deathfall_cam)，由Forgetest大佬開發的插件修正玩家鏡頭卡住等問題
+	* 在戰役/寫實/生存下，特感玩家的視角畫面會卡住，常發生在倖存者滅團重新回合的時候，如果要修正請安裝[l4d_fix_deathfall_cam](https://github.com/Target5150/MoYu_Server_Stupid_Plugins/tree/master/The%20Last%20Stand/l4d_fix_deathfall_cam)

@@ -4,6 +4,15 @@
 #include <sdktools>
 #include <multicolors>
 
+public Plugin myinfo = 
+{
+	name = "Kill stats (!kills)",
+	author = "Harry Potter",
+	description = "Show statistics of surviviors (kill S.I, C.I. and FF)on round end",
+	version = "1.7",
+	url = "https://steamcommunity.com/profiles/76561198026784913/"
+}
+
 #define L4D_TEAM_INFECTED 3
 #define L4D_TEAM_SURVIVOR 2
 #define L4D_TEAM_SPECTATOR 1
@@ -15,14 +24,6 @@ int iheadshot[MAXPLAYERS+1];
 int sheadshot[MAXPLAYERS+1];
 bool HasRoundEndedPrinted;
 
-public Plugin myinfo = 
-{
-	name = "Kill stats (!kills)",
-	author = "Harry Potter",
-	description = "Show statistics of surviviors (kill S.I, C.I. and FF)on round end",
-	version = "1.6",
-	url = "https://steamcommunity.com/id/TIGER_x_DRAGON/"
-}
 public void OnPluginStart()   
 {
 	LoadTranslations("kills.phrases");
@@ -38,28 +39,30 @@ public void OnPluginStart()
 	HookEvent("finale_vehicle_leaving", event_RoundEnd, EventHookMode_PostNoCopy); //救援載具離開之時  (之後沒有觸發round_end)
 
 }
+
 public void OnMapStart() 
 { 
 	HasRoundEndedPrinted = false;  
 	kill_infected();
 }
 
-public Action event_PlayerHurt(Event event, const char[] name, bool dontBroadcast) 
+void event_PlayerHurt(Event event, const char[] name, bool dontBroadcast) 
 {
 	int victimId = event.GetInt("userid");
 	int victim = GetClientOfUserId(victimId);
 	int attackerId = event.GetInt("attacker");
-	int attackersid = GetClientOfUserId(attackerId);
+	int attacker = GetClientOfUserId(attackerId);
 	int damageDone = event.GetInt("dmg_health");
-	
-	if (attackerId && victimId && IsClientInGame(attackersid) && GetClientTeam(attackersid) == L4D_TEAM_SURVIVOR && GetClientTeam(victim) == L4D_TEAM_SURVIVOR)
-    {
-        damageff[attackersid] += damageDone;
-    }
-    
+
+	if(victim == attacker || damageDone <= 0) return;
+
+	if (attacker && victim && IsClientInGame(attacker) && GetClientTeam(attacker) == L4D_TEAM_SURVIVOR && IsClientInGame(victim) && GetClientTeam(victim) == L4D_TEAM_SURVIVOR)
+	{
+		damageff[attacker] += damageDone;
+	}
 }
 
-public Action event_kill_infecteds(Event event, const char[] name, bool dontBroadcast) 
+void event_kill_infecteds(Event event, const char[] name, bool dontBroadcast) 
 {
 	int killer = GetClientOfUserId(event.GetInt("attacker"));
 	
@@ -69,46 +72,51 @@ public Action event_kill_infecteds(Event event, const char[] name, bool dontBroa
 	if(GetClientTeam(killer) == L4D_TEAM_SURVIVOR)
 	{
 		killifs[killer] += 1;
-		bool headshot=GetEventBool(event, "headshot");
+		bool headshot=event.GetBool("headshot");
 		if(headshot) iheadshot[killer] += 1;
 	}
 }
 
-public Action event_kill_infectedplayer(Event event, const char[] name, bool dontBroadcast) 
+void event_kill_infectedplayer(Event event, const char[] name, bool dontBroadcast) 
 {
 	int killer = GetClientOfUserId(event.GetInt("attacker"));
 	int deadbody = GetClientOfUserId(event.GetInt("userid"));
 	if (killer && IsClientInGame(killer) && GetClientTeam(killer) == L4D_TEAM_SURVIVOR && deadbody && IsClientInGame(deadbody) && GetClientTeam(deadbody) == L4D_TEAM_INFECTED)
 	{
 		killif[killer] += 1;
-		bool headshot=GetEventBool(event, "headshot");
+		bool headshot = event.GetBool("headshot");
 		if(headshot) sheadshot[killer] += 1;
 	}
 }
 
-public Action event_RoundEnd(Event event, const char[] name, bool dontBroadcast) 
+void event_RoundEnd(Event event, const char[] name, bool dontBroadcast) 
 {
 	if(!HasRoundEndedPrinted)
 	{
-		CreateTimer(1.5, KillPinfected_dis);
+		CreateTimer(0.0, KillPinfected_dis);
 		HasRoundEndedPrinted = true;
 	}
 }
-public Action KillPinfected_dis(Handle timer)
+
+Action KillPinfected_dis(Handle timer)
 {
 	displaykillinfected(0);
+
+	return Plugin_Continue;
 }
 
-public Action event_RoundStart(Event event, const char[] name, bool dontBroadcast) 
+void event_RoundStart(Event event, const char[] name, bool dontBroadcast) 
 {
 	HasRoundEndedPrinted = false;
 	kill_infected();
 }
 
-public Action Command_kill(int client, int args)
+Action Command_kill(int client, int args)
 {
 	int iTeam = GetClientTeam(client);
 	displaykillinfected(iTeam);
+
+	return Plugin_Handled;
 }
 
 void displaykillinfected(int team)
@@ -124,7 +132,7 @@ void displaykillinfected(int team)
 		players++;
 	}
 	SortCustom1D(players_clients, players, SortByDamageDesc);
-	for (int i = 0; i < players; i++)
+	for (int i = 0 ; i < players; i++)
 	{
 		client = players_clients[i];
 		killss = killif[client];
@@ -149,8 +157,7 @@ void displaykillinfected(int team)
 	}
 }	
 	
-
-public int SortByDamageDesc(int elem1, int elem2, const int[] array, Handle hndl)
+int SortByDamageDesc(int elem1, int elem2, const int[] array, Handle hndl)
 {
 	if (killif[elem1] > killif[elem2]) return -1;
 	else if (killif[elem2] > killif[elem1]) return 1;
@@ -159,15 +166,14 @@ public int SortByDamageDesc(int elem1, int elem2, const int[] array, Handle hndl
 	return 0;
 }
 
-
 void kill_infected()
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{ 
-		 killif[i] = 0; 
-		 killifs[i] = 0; 
-		 iheadshot[i] = 0;
-		 sheadshot[i] = 0;
-		 damageff[i] = 0;
+		killif[i] = 0; 
+		killifs[i] = 0; 
+		iheadshot[i] = 0;
+		sheadshot[i] = 0;
+		damageff[i] = 0;
 	}
 }

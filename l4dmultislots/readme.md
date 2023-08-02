@@ -1,5 +1,5 @@
 # Description | 內容
-Allows additional survivor players in coop/survival/realism when 5+ player joins the server
+Allows additional survivor players in server when 5+ player joins the server
 * When 5+ player joins the server but no any bot can be taken over, this plugin will spawn an alive survivor bot for him.
 
 * Video | 影片展示
@@ -13,8 +13,8 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 
 * Apply to | 適用於
 	```
-	L4D1 Coop/Survival
-	L4D2 Coop/Survival/Realism
+	L4D1
+	L4D2
 	```
 
 * Translation Support | 支援翻譯
@@ -30,6 +30,39 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 	```
 
 * <details><summary>Changelog | 版本日誌</summary>
+
+	```php
+	//mi123645 @ 2009-2010
+	//HarryPotter @ 2020-2023
+	```
+	* v5.9 (2023-5-22)
+		* Support l4d2 all mutation mode, New player won't be swapped to survivor team if infected team is available in current mode.
+
+	* v5.8 (2023-5-6)
+		* Support Versus/Scavenge. Server will not always switch new player to survivor team.
+		* Add more cvars
+			```php
+			// Total survivors allowed on the server. If numbers of survivors reached limit, no any new bots would be created.
+			// Must be greater then or equal to 'l4d_multislots_max_survivors'
+			l4d_multislots_limit_survivors "10"
+
+			// If 1, Check team balance when player tries to use 'Join Survivors' command to join survivor team in versus/scavenge.
+			// If team is unbanlance, will fail to join survivor team!
+			l4d_multislots_versus_command_balance "1"
+
+			// Teams are unbalanced when one team has this many more players than the other team in versus/scavenge.
+			l4d_multislots_versus_teams_unbalance_limit "1"
+
+			// If 1, Block 'Join Survivors' commands (sm_join, sm_js)
+			l4d_multislots_join_command_block "0"
+			```
+		* Update Translation files
+
+	* v5.7 (2023-4-23)
+		* Don't spawn bot automatically when 5+ survivors join in versus/scavenge (player still can join survivor via command)
+
+	* v5.6 (2023-2-18)
+		* Observer(not idle) always stay Observer after map map_transition.
 
 	* v5.5 (2023-1-13)
 		* Support offical convar: 
@@ -78,7 +111,7 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 		// How to join the game for new player.
 		// 0: Old method. Spawn an alive bot first -> new player takes over.
 		// 1: Switch new player to survivor team (dead state) -> player respawns.
-		l4d_multislots_join_survior_method "1"
+		l4d_multislots_join_survior_method "0"
 
 		// When 5+ new player joins the server but no any bot can be taken over, the player will appear as a dead survivor if survivors have left start safe area for at least X seconds. (0=Always spawn alive bot for new player)
 		l4d_multislots_alive_bot_time "0"
@@ -88,6 +121,10 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 
 		// Kick AI Survivor bots if numbers of survivors has exceeded the certain value. (does not kick real player, minimum is 4)
 		l4d_multislots_max_survivors "4"
+
+		// Total survivors allowed on the server. If numbers of survivors reached limit, no any new bots would be created.
+		// Must be greater then or equal to 'l4d_multislots_max_survivors'
+		l4d_multislots_limit_survivors "10"
 
 		// If 1, Spawn 5+ survivor bots when round starts. (Numbers depends on Convar l4d_multislots_max_survivors)
 		l4d_multislots_spawn_survivors_roundstart "0"
@@ -144,6 +181,16 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 
 		// Invincible time after new 5+ Survivor spawn by this plugin. (0=off)
 		l4d_multislots_respawn_invincibletime "3.0"
+
+		// If 1, Block 'Join Survivors' commands (sm_join, sm_js)
+		l4d_multislots_join_command_block "0"
+
+		// If 1, Check team balance when player tries to use 'Join Survivors' command to join survivor team in versus/scavenge.
+		// If team is unbanlance, will fail to join survivor team!
+		l4d_multislots_versus_command_balance "1"
+
+		// Teams are unbalanced when one team has this many more players than the other team in versus/scavenge.
+		l4d_multislots_versus_teams_unbalance_limit "1"
 		```
 </details>
 
@@ -198,6 +245,10 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 
 * 原理
 	* 當第五位玩家加入伺服器之後，此插件會創造第五個倖存者Bot並且給新來的玩家取代
+	* (v5.8 新增) 支援對抗/清道夫模式，不會自動創造第五個倖存者Bot給新來的玩家取代
+		* 玩家必須手動輸入命令加入倖存者陣營
+	* (v5.8 新增) 當有人使用插件的命令嘗試加入倖存者陣營時，先檢查倖存者陣營與特感陣營是否平衡
+		* 如果隊伍不平衡，加入倖存者陣營將會失敗
 
 * 必要安裝
 	1. [l4dtoolz](https://github.com/fbef0102/Game-Private_Plugin/blob/main/Tutorial_%E6%95%99%E5%AD%B8%E5%8D%80/Chinese_%E7%B9%81%E9%AB%94%E4%B8%AD%E6%96%87/Server/%E5%AE%89%E8%A3%9D%E5%85%B6%E4%BB%96%E6%AA%94%E6%A1%88%E6%95%99%E5%AD%B8/README.md#%E5%AE%89%E8%A3%9Dl4dtoolz): 解鎖伺服器人數上限，有八位以上的玩家可以進入伺服器遊玩
@@ -225,6 +276,10 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 
 		// 當倖存者Bot超過4位以上時踢出遊戲. (不會踢出真人玩家, 最小值是 4)
 		l4d_multislots_max_survivors "4"
+
+		// 伺服器能允許的倖存者數量. 如果倖存者超過數量限制，則伺服器不會產生新的倖存者Bots
+		// 這個數值必須大於或等於 'l4d_multislots_max_survivors'
+		l4d_multislots_limit_survivors "10"
 
 		// 為1時，回合一開始生成第五位以上的倖存者Bot (數量依據指令 l4d_multislots_max_survivors)
 		l4d_multislots_spawn_survivors_roundstart "0"
@@ -270,7 +325,7 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 		// (L4D1) 給予新生成的倖存者Bot副醫療物品 (1 - 藥丸, 0=關閉)
 		l4d_multislots_fifthweapon "0"
 
-		// If 1, allow extra first aid kits for 5+ players when the finale is activated, One extra kit per player above four. (0=No extra kits)
+		// 為1時，最後一關救援開始時給予第五位以上的倖存者額外的治療包. (0=沒有額外治療包)
 		l4d_multislots_finale_extra_first_aid "1"
 
 		// 為1時，回合開始時給予第五位以上的倖存者額外的治療包. (0=沒有額外治療包)
@@ -281,6 +336,16 @@ Allows additional survivor players in coop/survival/realism when 5+ player joins
 
 		// 當此插件產生一個倖存者Bot時，有3.0秒的無敵時間不會受到任何傷害. (0=關閉)
 		l4d_multislots_respawn_invincibletime "3.0"
+
+		// 為1時，禁止所有人使用插件的命令嘗試加入倖存者陣營. (sm_join, sm_js)
+		l4d_multislots_join_command_block "0"
+
+		// 為1時，當有人使用插件的命令嘗試加入倖存者陣營時，先檢查倖存者陣營與特感陣營是否平衡 (僅限對抗/清道夫模式)
+		// 如果隊伍不平衡, 加入倖存者陣營將會失敗!
+		l4d_multislots_versus_command_balance "1"
+
+		// 當一方的隊伍超過另一方的隊伍這個數值以上的玩家時，則視為隊伍不平衡. (僅限對抗/清道夫模式)
+		l4d_multislots_versus_teams_unbalance_limit "1"
 		```
 </details>
 
